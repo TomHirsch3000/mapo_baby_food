@@ -14,7 +14,9 @@ env/
 # Data (large files — import locally)
 data/*.db
 data/*.json
-frontend/public/data/
+
+# Pre-built frontend JSON IS committed so Vercel can serve it statically
+# frontend/public/data/
 
 # Jupyter
 .ipynb_checkpoints/
