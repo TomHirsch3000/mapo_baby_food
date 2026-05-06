@@ -13,7 +13,8 @@ export default function App() {
   const wrapRef = useRef(null);
   const [dimensions, setDimensions] = useState({ width: window.innerWidth, height: window.innerHeight });
 
-  const [viewMode, setViewMode] = useState('UNIVERSE');
+  const [viewMode, setViewMode] = useState('HOME');
+  const [fieldSource, setFieldSource] = useState('GALAXY');
   const [activeGalaxy, setActiveGalaxy] = useState(null);
   const [activeGroup, setActiveGroup] = useState(null);
   const [selected, setSelected] = useState(null);
@@ -51,6 +52,7 @@ export default function App() {
     setViewMode('GALAXY');
     setActiveGroup(null);
     setSelected(null);
+    setFieldSource('GALAXY');
   };
 
   const handleSearch = (query) => {
@@ -96,8 +98,21 @@ export default function App() {
   const handleBackToGalaxy = () => {
     isReturningRef.current = true;
     setActiveGroup(null);
-    setViewMode('GALAXY');
     setSelected(null);
+    if (fieldSource === 'FOOD_GALAXY') {
+      setViewMode('FOOD_GALAXY');
+    } else {
+      setViewMode('GALAXY');
+    }
+  };
+
+  const handleBackToHome = () => {
+    setViewMode('HOME');
+    setActiveGalaxy(null);
+    setActiveGroup(null);
+    setSelected(null);
+    setSearchFilter(null);
+    setFieldSource('GALAXY');
   };
 
   const handlePaperClick = (paper) => {
@@ -106,7 +121,16 @@ export default function App() {
   };
 
   const handleNodeClick = (d) => {
-    if (viewMode === 'UNIVERSE') {
+    if (viewMode === 'HOME') {
+      if (d.id === 'food_map') setViewMode('FOOD_GALAXY');
+      else if (d.id === 'recommendations') setViewMode('UNIVERSE');
+    } else if (viewMode === 'FOOD_GALAXY') {
+      setActiveGalaxy(d.id);
+      setViewMode('FIELD');
+      setActiveGroup(null);
+      setSelected(null);
+      setFieldSource('FOOD_GALAXY');
+    } else if (viewMode === 'UNIVERSE') {
       if (d.isMenuNode) return;
       if (d.data?.hasPapers === false) { setSelected(d); return; }
       handleGalaxyClick(d.id);
@@ -192,7 +216,7 @@ export default function App() {
     const height = dimensions.height;
     const graphCenterY = -height * 0.1;
 
-    const colorScaleDomain = viewMode === 'UNIVERSE'
+    const colorScaleDomain = (viewMode === 'UNIVERSE' || viewMode === 'FOOD_GALAXY' || viewMode === 'HOME')
       ? [...new Set(nodes.filter(n => !n.isMenuNode).map(n => n.group).filter(Boolean))]
       : xGroups;
     const colorScale = d3.scaleOrdinal(d3.schemeTableau10).domain(colorScaleDomain);
@@ -245,6 +269,7 @@ export default function App() {
         activeGroupLabel={activeGroup}
         galaxyName={activeGalaxy && universeData ? (universeData.nodes?.find(n => n.id === activeGalaxy)?.name || "Topic View") : "Topic View"}
         searchQuery={searchFilter?.query || ''}
+        onBackToHome={handleBackToHome}
         onBackToUniverse={handleBackToUniverse}
         onBackToGalaxy={handleBackToGalaxy}
         onBackFromSearch={handleBackFromSearch}
@@ -253,6 +278,7 @@ export default function App() {
         onSearch={handleSearch}
         paperIndex={paperIndex}
         onAutocompleteSelect={handleAutocompleteSelect}
+        fieldSource={fieldSource}
       />
 
       <Graph

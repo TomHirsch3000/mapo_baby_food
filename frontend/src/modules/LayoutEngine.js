@@ -249,6 +249,22 @@ export class LayoutEngine {
         return sim;
     }
 
+    applyHomeLayout(nodes, sim) {
+        const spacing = Math.min(320, this.width * 0.22);
+        nodes.forEach((n, i) => {
+            n.fx = (i === 0 ? -1 : 1) * spacing;
+            n.fy = 0;
+        });
+        sim.force('x', null).force('y', null).force('charge', null)
+            .force('collide', null).force('link', null).force('center', null);
+        return sim;
+    }
+
+    applyFoodGalaxyLayout(nodes, sim) {
+        // Reuse universe central layout — radial by group
+        return this.applyUniverseCentralLayout(nodes, sim);
+    }
+
     // Search layout — uses field layout defaults
     applySearchLayout(nodes, edges, sim) {
         return this.applyFieldLayout(nodes, edges, sim, null, 'CENTRAL', {});

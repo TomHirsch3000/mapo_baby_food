@@ -63,6 +63,8 @@ export const Graph = ({
 
         const svg = d3.select(svgRef.current);
         const isUniverse = viewMode === 'UNIVERSE';
+        const isHome = viewMode === 'HOME';
+        const isFoodGalaxy = viewMode === 'FOOD_GALAXY';
         const isGalaxy = viewMode === 'GALAXY';
         const isSearch = viewMode === 'SEARCH';
         const isField = viewMode === 'FIELD' || viewMode === 'DETAIL' || isSearch;
@@ -128,12 +130,16 @@ export const Graph = ({
 
         const sim = d3.forceSimulation(currentNodes);
 
-        if (isUniverse) {
+        if (isHome) {
+            layoutEngine.current.applyHomeLayout(currentNodes, sim);
+        } else if (isUniverse) {
             if (layoutMode === 'TIMELINE') {
                 layoutEngine.current.applyUniverseTimelineLayout(currentNodes, sim, scales.universeXScale, scales.timelineHeightScale);
             } else {
                 layoutEngine.current.applyUniverseCentralLayout(currentNodes, sim);
             }
+        } else if (isFoodGalaxy) {
+            layoutEngine.current.applyFoodGalaxyLayout(currentNodes, sim);
         } else if (isGalaxy) {
             layoutEngine.current.applyGalaxyLayout(currentNodes, currentEdges, sim, layoutMode, scales);
         } else if (isSearch) {
@@ -142,7 +148,7 @@ export const Graph = ({
             layoutEngine.current.applyFieldLayout(currentNodes, currentEdges, sim, selected, layoutMode, scales);
         }
 
-        const DRY_RUN_TICKS = (isGalaxy || isField) ? 300 : 120;
+        const DRY_RUN_TICKS = isHome ? 0 : ((isGalaxy || isField) ? 300 : 120);
         sim.stop();
         sim.alpha(1);
         for (let i = 0; i < DRY_RUN_TICKS; ++i) {
@@ -300,7 +306,23 @@ export const Graph = ({
 
         nodeEnter.each(function (d) {
             const el = d3.select(this);
-            if (isUniverse && !d.isMenuNode) {
+            if (isHome) {
+                el.append("circle").attr("class", "home-node-orbit");
+                el.append("circle").attr("class", "home-node-core");
+                const fo = el.append("foreignObject").attr("class", "home-node-fo");
+                fo.append("xhtml:div").attr("class", "home-node-div");
+            } else if (isFoodGalaxy && !d.isMenuNode) {
+                const clipId = `food-clip-${d.id}`;
+                el.append("defs").append("clipPath").attr("id", clipId)
+                    .append("circle").attr("class", "food-clip-circle");
+                el.append("circle").attr("class", "food-orbit");
+                el.append("image").attr("class", "food-img")
+                    .attr("clip-path", `url(#${clipId})`)
+                    .style("pointer-events", "none");
+                el.append("circle").attr("class", "food-ring");
+                const fo = el.append("foreignObject").attr("class", "food-label-fo");
+                fo.append("xhtml:div").attr("class", "food-label-div");
+            } else if (isUniverse && !d.isMenuNode) {
                 el.append("path").attr("class", "orbit");
                 el.append("path").attr("class", "core");
                 el.append("image")

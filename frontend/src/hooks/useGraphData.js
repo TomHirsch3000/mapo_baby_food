@@ -254,7 +254,7 @@ export const useGraphData = (viewMode, activeGalaxy, groupingMode, yGroupingMode
     }, [rawNodes, rawEdges, groupingMode, yGroupingMode]);
 
     const universeNodes = useMemo(() => {
-        if (viewMode !== 'UNIVERSE' || !universeData) return [];
+        if ((viewMode !== 'UNIVERSE' && viewMode !== 'FOOD_GALAXY') || !universeData) return [];
         const sortedRaw = (universeData.nodes || []).sort((a, b) => (b.totalWorksCount || 0) - (a.totalWorksCount || 0));
         const galaxyNodes = sortedRaw.map((galaxy) => {
             const totalWorks = galaxy.totalWorksCount || 0;
@@ -291,6 +291,32 @@ export const useGraphData = (viewMode, activeGalaxy, groupingMode, yGroupingMode
         return galaxyNodes;
     }, [universeData, viewMode]);
 
+    const homeNodes = useMemo(() => {
+        if (viewMode !== 'HOME') return [];
+        return [
+            {
+                id: 'food_map',
+                name: 'Food Map',
+                type: 'home_node',
+                description: 'Explore research by food type',
+                group: 'food',
+                val: 60,
+                x: 0, y: 0,
+                isHomeNode: true,
+            },
+            {
+                id: 'recommendations',
+                name: 'Recommendations',
+                type: 'home_node',
+                description: 'What to feed at each age',
+                group: 'recommendations',
+                val: 60,
+                x: 0, y: 0,
+                isHomeNode: true,
+            },
+        ];
+    }, [viewMode]);
+
     const aggregatedNodes = useMemo(() => {
         if (viewMode !== 'GALAXY') return [];
         return groupStats.map(g => ({
@@ -305,7 +331,8 @@ export const useGraphData = (viewMode, activeGalaxy, groupingMode, yGroupingMode
     }, [groupStats, viewMode]);
 
     const activeNodes = useMemo(() => {
-        if (viewMode === 'UNIVERSE') return universeNodes;
+        if (viewMode === 'HOME') return homeNodes;
+        if (viewMode === 'UNIVERSE' || viewMode === 'FOOD_GALAXY') return universeNodes;
         if (viewMode === 'GALAXY') return aggregatedNodes;
         if (viewMode === 'FIELD') {
             if (!activeGroup) return nodes;
@@ -343,7 +370,7 @@ export const useGraphData = (viewMode, activeGalaxy, groupingMode, yGroupingMode
             return [dummyNode, ...nodes];
         }
         return nodes;
-    }, [viewMode, universeNodes, aggregatedNodes, nodes, activeGroup, selected, rawEdges, searchFilter]);
+    }, [viewMode, homeNodes, universeNodes, aggregatedNodes, nodes, activeGroup, selected, rawEdges, searchFilter]);
 
     const edges = useMemo(() => {
         if (viewMode === 'GALAXY') return groupEdges;
@@ -376,6 +403,7 @@ export const useGraphData = (viewMode, activeGalaxy, groupingMode, yGroupingMode
 
     return {
         universeData, nodes: activeNodes, edges, groupStats, xGroups, yGroups, groupEdges,
-        rawNodes, rawEdges, nodeByIdRef, isLoadingDetail, cancelDetailFetch, searchResult, paperIndex
+        rawNodes, rawEdges, nodeByIdRef, isLoadingDetail, cancelDetailFetch, searchResult, paperIndex,
+        homeNodes
     };
 };
