@@ -204,7 +204,7 @@ def build_universe(data_dir, out_dir):
     universe = {
         "version": 1,
         "description": "Map of Baby Food Science — evidence-based nutrition research",
-        "galaxies": galaxy_nodes,
+        "nodes": galaxy_nodes,
     }
 
     universe_path = os.path.join(out_dir, "universe.json")

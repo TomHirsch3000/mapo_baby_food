@@ -2,7 +2,7 @@
   "version": 1,
   "description": "Map of Baby Food Science — evidence-based nutrition research",
   "note": "This is starter data. Run backend/import_openalex.py then backend/build_data.py to populate with real papers.",
-  "galaxies": [
+  "nodes": [
     {
       "id": "peanut_allergy",
       "name": "Peanut Allergy",
