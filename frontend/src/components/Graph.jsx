@@ -311,6 +311,13 @@ export const Graph = ({
                 el.append("circle").attr("class", "home-node-core");
                 const fo = el.append("foreignObject").attr("class", "home-node-fo");
                 fo.append("xhtml:div").attr("class", "home-node-div");
+            } else if (isFoodGalaxy && d.isFoodGroupLabel) {
+                // Group anchor node — rendered as a hexagon (like universe nodes)
+                el.append("path").attr("class", "orbit");
+                el.append("path").attr("class", "core");
+                el.append("image").attr("class", "node-icon").style("pointer-events", "none").style("display", "none");
+                const fo = el.append("foreignObject").attr("class", "hex-label-fo");
+                fo.append("xhtml:div").attr("class", "hex-label-div");
             } else if (isFoodGalaxy && !d.isMenuNode) {
                 const clipId = `food-clip-${d.id}`;
                 el.append("defs").append("clipPath").attr("id", clipId)
@@ -429,14 +436,43 @@ export const Graph = ({
                 el.select(".label-sub").text("");
                 return;
             }
+            if (isFoodGalaxy && d.isFoodGroupLabel) {
+                // Hexagon group anchor — same rendering as UNIVERSE hexagons
+                const val = d.val || 38;
+                const hexR = val * 2.5;
+                const color = cScale(d.group || 'Default');
+                el.select(".orbit")
+                    .attr("d", roundedHexagonPath(hexR))
+                    .attr("fill", color).attr("fill-opacity", 0.15)
+                    .attr("stroke", "none").attr("stroke-width", 0);
+                el.select(".core")
+                    .attr("d", roundedHexagonPath(hexR * 0.78))
+                    .attr("fill", color).attr("fill-opacity", 0.35)
+                    .attr("stroke", "none").attr("stroke-width", 0);
+                const labelW = hexR * 2.2;
+                el.select(".hex-label-fo")
+                    .attr("x", -labelW / 2).attr("y", -hexR * 0.55)
+                    .attr("width", labelW).attr("height", hexR * 1.2)
+                    .style("overflow", "visible").style("pointer-events", "none");
+                el.select(".hex-label-div")
+                    .style("width", `${labelW}px`)
+                    .style("display", "flex").style("align-items", "center")
+                    .style("justify-content", "center").style("text-align", "center")
+                    .style("font-family", "Inter, system-ui, sans-serif")
+                    .style("font-size", `${Math.min(16, val * 0.32)}px`)
+                    .style("font-weight", "700").style("color", color)
+                    .style("text-transform", "uppercase").style("letter-spacing", "0.06em")
+                    .style("line-height", "1.2").style("pointer-events", "none")
+                    .text(d.name);
+                el.select(".label-main").text("");
+                el.select(".label-sub").text("");
+                return;
+            }
             if (isFoodGalaxy && !d.isMenuNode) {
-                const minR = 20, maxR = 160;
+                const minR = 20, maxR = 80;
                 const total = d.totalOpenAlexCount || d.totalWorksCount || 0;
-                // Data-calibrated log scale: logMin≈log10(2), logMax≈log10(24000)
-                // Maps actual data range → [minR, maxR] giving ~8x size ratio
-                const logFrac = total > 0
-                    ? Math.min(Math.max((Math.log10(total) - 0.3) / 4.1, 0), 1)
-                    : 0;
+                // Log scale [1,4000] → [minR,maxR], consistent with val in useGraphData
+                const logFrac = total > 0 ? Math.min(Math.log10(Math.max(1, total)) / 3.6, 1) : 0;
                 const r = minR + (maxR - minR) * logFrac;
                 const color = cScale(d.group || 'Default');
 
@@ -450,8 +486,8 @@ export const Graph = ({
                     .attr("fill-opacity", 0.12)
                     .attr("stroke", "none");
 
-                // Food image
-                const iconCategory = d.data?.iconCategory;
+                // Food image — iconCategory comes from the node directly or its raw data
+                const iconCategory = d.iconCategory || d.data?.iconCategory;
                 const imgSrc = iconCategory ? resolveIconHref(getIconPath({ iconCategory })) : null;
                 if (imgSrc) {
                     el.select(".food-img")

@@ -3,6 +3,7 @@ import * as d3 from 'd3';
 
 export const useGraphData = (viewMode, activeGalaxy, groupingMode, yGroupingMode, activeGroup, selected, detailFilter, setShowTimeoutPrompt, searchFilter) => {
     const [universeData, setUniverseData] = useState(null);
+    const [foodUniverseData, setFoodUniverseData] = useState(null);
     const [rawNodes, setRawNodes] = useState([]);
     const [rawEdges, setRawEdges] = useState([]);
     const [isLoadingDetail, setIsLoadingDetail] = useState(false);
@@ -16,6 +17,16 @@ export const useGraphData = (viewMode, activeGalaxy, groupingMode, yGroupingMode
             .then(r => r.json())
             .then(data => setUniverseData(data))
             .catch(err => console.error("Failed to load universe data:", err));
+    }, []);
+
+    useEffect(() => {
+        fetch("./food_universe.json")
+            .then(r => r.json())
+            .then(data => setFoodUniverseData(data))
+            .catch(() => {
+                // food_universe.json not yet built — show stub nodes from PREDEFINED_FOODS
+                setFoodUniverseData({ nodes: [] });
+            });
     }, []);
 
     useEffect(() => {
@@ -38,8 +49,12 @@ export const useGraphData = (viewMode, activeGalaxy, groupingMode, yGroupingMode
     }, [universeData]);
 
     useEffect(() => {
-        if (!activeGalaxy || !universeData) return;
-        const galaxy = universeData.nodes?.find(g => g.id === activeGalaxy);
+        if (!activeGalaxy || (!universeData && !foodUniverseData)) return;
+        const allNodes = [
+            ...(universeData?.nodes || []),
+            ...(foodUniverseData?.nodes || []),
+        ];
+        const galaxy = allNodes.find(g => g.id === activeGalaxy);
         if (!galaxy || !galaxy.nodesFile) return;
 
         Promise.all([
@@ -51,7 +66,7 @@ export const useGraphData = (viewMode, activeGalaxy, groupingMode, yGroupingMode
                 setRawEdges(Array.isArray(e) ? e : []);
             })
             .catch(err => console.error("Failed to load galaxy data:", err));
-    }, [activeGalaxy, universeData]);
+    }, [activeGalaxy, universeData, foodUniverseData]);
 
     useEffect(() => {
         if (viewMode !== 'DETAIL' || !detailFilter) return;
@@ -254,14 +269,29 @@ export const useGraphData = (viewMode, activeGalaxy, groupingMode, yGroupingMode
     }, [rawNodes, rawEdges, groupingMode, yGroupingMode]);
 
     const universeNodes = useMemo(() => {
-        if ((viewMode !== 'UNIVERSE' && viewMode !== 'FOOD_GALAXY') || !universeData) return [];
-        const sortedRaw = (universeData.nodes || []).sort((a, b) => (b.totalOpenAlexCount || b.totalWorksCount || 0) - (a.totalOpenAlexCount || a.totalWorksCount || 0));
+        if (viewMode !== 'UNIVERSE' && viewMode !== 'FOOD_GALAXY') return [];
+
+        const isFoodView = viewMode === 'FOOD_GALAXY';
+        const sourceData = isFoodView ? foodUniverseData : universeData;
+        if (!sourceData) return [];
+
+        // For food map: log scale over [1, 4000] papers → val range [8, 60]
+        // For recommendations: sqrt scale calibrated to topic data range (1–24,000 papers)
+        const makeVal = isFoodView
+            ? (total) => {
+                const logFrac = total > 0 ? Math.min(Math.log10(Math.max(1, total)) / 3.6, 1) : 0;
+                return 8 + 52 * logFrac;
+            }
+            : (total) => Math.sqrt(Math.max(1, total)) * 0.387;
+
+        const sortedRaw = (sourceData.nodes || []).sort((a, b) =>
+            (b.totalOpenAlexCount || b.totalWorksCount || 0) - (a.totalOpenAlexCount || a.totalWorksCount || 0)
+        );
+
         const galaxyNodes = sortedRaw.map((galaxy) => {
             const totalWorks = galaxy.totalWorksCount || 0;
             const totalOpenAlex = galaxy.totalOpenAlexCount || totalWorks;
-            // sqrt scale → area ∝ paper count (1000 papers = 10x area of 100 papers)
-            // k = 60 / sqrt(24000) ≈ 0.387 so the largest topic reaches val≈60
-            const val = Math.sqrt(Math.max(1, totalOpenAlex)) * 0.387;
+            const val = makeVal(totalOpenAlex);
             if (galaxy.worksByDecade && Array.isArray(galaxy.worksByDecade)) {
                 galaxy.worksByDecade.sort((a, b) => a.decade - b.decade);
             }
@@ -279,6 +309,7 @@ export const useGraphData = (viewMode, activeGalaxy, groupingMode, yGroupingMode
                 x: 0, y: 0,
                 field: 'Galaxy',
                 group: galaxy.group || 'Uncategorized',
+                iconCategory: galaxy.iconCategory || null,
                 iconPath: galaxy.iconPath || null,
                 citationCount: galaxy.totalCitations || 0,
                 hasPapers: (galaxy.nodeCount > 0 || galaxy.totalWorksCount > 0) && !!galaxy.nodesFile,
@@ -287,13 +318,41 @@ export const useGraphData = (viewMode, activeGalaxy, groupingMode, yGroupingMode
             };
         });
 
+        // For Food Galaxy: add hexagonal group-label nodes (like mapo-food cuisine nodes)
+        if (isFoodView) {
+            const foodGroups = [
+                { id: 'vegetables', name: 'Vegetables', icon: 'group-vegetables' },
+                { id: 'fruits',     name: 'Fruits',     icon: 'group-fruits' },
+                { id: 'proteins',   name: 'Proteins',   icon: 'group-proteins' },
+                { id: 'dairy',      name: 'Dairy',      icon: 'group-dairy' },
+                { id: 'grains',     name: 'Grains',     icon: 'group-grains' },
+                { id: 'legumes',    name: 'Legumes & Nuts', icon: 'group-legumes' },
+                { id: 'fats',       name: 'Fats & Oils', icon: 'group-fats' },
+                { id: 'functional', name: 'Functional', icon: 'group-functional' },
+            ];
+            foodGroups.forEach(g => {
+                galaxyNodes.push({
+                    id: `group-label-${g.id}`,
+                    key: `group-label-${g.id}`,
+                    type: 'food_group',
+                    name: g.name,
+                    group: g.id,
+                    iconCategory: g.icon,
+                    val: 38,
+                    x: 0, y: 0,
+                    isFoodGroupLabel: true,
+                    data: {},
+                });
+            });
+        }
+
         galaxyNodes.push({
             id: 'menu-node', key: 'menu-node', type: 'menu', name: 'Menu',
             val: 40, x: 0, y: 0, isMenuNode: true, data: {}
         });
 
         return galaxyNodes;
-    }, [universeData, viewMode]);
+    }, [universeData, foodUniverseData, viewMode]);
 
     const homeNodes = useMemo(() => {
         if (viewMode !== 'HOME') return [];

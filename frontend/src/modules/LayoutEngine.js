@@ -263,8 +263,58 @@ export class LayoutEngine {
     }
 
     applyFoodGalaxyLayout(nodes, sim) {
-        // Reuse universe central layout — radial by group
-        return this.applyUniverseCentralLayout(nodes, sim);
+        // Fix group-label hexagons at evenly-spaced positions around a ring,
+        // then pull food circles toward their group center.
+        const GROUP_ORDER = ['vegetables','fruits','proteins','dairy','grains','legumes','fats','functional'];
+        const radius = 380;
+        const groupCenters = {};
+
+        GROUP_ORDER.forEach((g, i) => {
+            const angle = (i / GROUP_ORDER.length) * 2 * Math.PI - Math.PI / 2;
+            groupCenters[g] = {
+                x: Math.cos(angle) * radius,
+                y: Math.sin(angle) * radius + this.graphCenterY,
+            };
+        });
+
+        nodes.forEach(n => {
+            n.fx = null; n.fy = null;
+            if (n.isMenuNode) {
+                n.x = 750; n.y = -600;
+                return;
+            }
+            if (n.isFoodGroupLabel) {
+                const c = groupCenters[n.group] || { x: 0, y: this.graphCenterY };
+                n.fx = c.x; n.fy = c.y;
+                n.x = c.x; n.y = c.y;
+                return;
+            }
+            const c = groupCenters[n.group] || { x: 0, y: this.graphCenterY };
+            n.x = c.x + (Math.random() - 0.5) * 80;
+            n.y = c.y + (Math.random() - 0.5) * 80;
+        });
+
+        sim.force("center", null)
+            .force("x", d3.forceX(d => {
+                if (d.isMenuNode) return 750;
+                return groupCenters[d.group]?.x ?? 0;
+            }).strength(d => d.isFoodGroupLabel ? 0 : 0.6))
+            .force("y", d3.forceY(d => {
+                if (d.isMenuNode) return -600;
+                return groupCenters[d.group]?.y ?? 0;
+            }).strength(d => d.isFoodGroupLabel ? 0 : 0.6))
+            .force("charge", d3.forceManyBody().strength(d => {
+                if (d.isFoodGroupLabel) return -600;
+                return -20 - (d.val * 2);
+            }))
+            .force("collide", d3.forceCollide().radius(d => {
+                if (d.isFoodGroupLabel) return 105;
+                // val range 8-60, visual r range 20-80 → collision = visual r + 12 gap
+                return d.val * 1.0 + 12;
+            }).iterations(4))
+            .force("link", null);
+
+        return sim;
     }
 
     // Search layout — uses field layout defaults

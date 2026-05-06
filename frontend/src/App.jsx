@@ -125,6 +125,7 @@ export default function App() {
       if (d.id === 'food_map') setViewMode('FOOD_GALAXY');
       else if (d.id === 'recommendations') setViewMode('UNIVERSE');
     } else if (viewMode === 'FOOD_GALAXY') {
+      if (d.isMenuNode || d.isFoodGroupLabel) return;
       setActiveGalaxy(d.id);
       setViewMode('FIELD');
       setActiveGroup(null);
