@@ -138,7 +138,7 @@ export const FooterPanel = ({ selected, hovered, layoutMode, onDetailedViewClick
                                     <h3 style={{ margin: 0 }} dangerouslySetInnerHTML={{ __html: formatAbstract(hovered.title || hovered.name) }}></h3>
                                 </div>
                                 <div className="footer-meta" style={{ marginBottom: '8px' }}>
-                                    <strong>{d3.format(",")(hovered.totalWorksCount || 0)}</strong> known works
+                                    <strong>{d3.format(",")(hovered.totalOpenAlexCount || hovered.totalWorksCount || 0)}</strong> papers in OpenAlex
                                     <span style={{ color: '#94a3b8' }}> • </span>
                                     <strong>{d3.format(",")(hovered.nodeCount || 0)}</strong> in map
                                 </div>

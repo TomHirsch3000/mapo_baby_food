@@ -255,10 +255,13 @@ export const useGraphData = (viewMode, activeGalaxy, groupingMode, yGroupingMode
 
     const universeNodes = useMemo(() => {
         if ((viewMode !== 'UNIVERSE' && viewMode !== 'FOOD_GALAXY') || !universeData) return [];
-        const sortedRaw = (universeData.nodes || []).sort((a, b) => (b.totalWorksCount || 0) - (a.totalWorksCount || 0));
+        const sortedRaw = (universeData.nodes || []).sort((a, b) => (b.totalOpenAlexCount || b.totalWorksCount || 0) - (a.totalOpenAlexCount || a.totalWorksCount || 0));
         const galaxyNodes = sortedRaw.map((galaxy) => {
             const totalWorks = galaxy.totalWorksCount || 0;
-            const val = totalWorks > 0 ? 30 + Math.sqrt(totalWorks) * 0.05 : 25;
+            const totalOpenAlex = galaxy.totalOpenAlexCount || totalWorks;
+            // sqrt scale → area ∝ paper count (1000 papers = 10x area of 100 papers)
+            // k = 60 / sqrt(24000) ≈ 0.387 so the largest topic reaches val≈60
+            const val = Math.sqrt(Math.max(1, totalOpenAlex)) * 0.387;
             if (galaxy.worksByDecade && Array.isArray(galaxy.worksByDecade)) {
                 galaxy.worksByDecade.sort((a, b) => a.decade - b.decade);
             }
@@ -267,17 +270,18 @@ export const useGraphData = (viewMode, activeGalaxy, groupingMode, yGroupingMode
                 key: galaxy.id,
                 type: 'galaxy',
                 name: galaxy.name,
-                nodeCount: galaxy.nodeCount || 0,
+                nodeCount: galaxy.nodeCount || galaxy.totalWorksCount || 0,
                 edgeCount: galaxy.edgeCount || 0,
                 totalWorksCount: totalWorks,
-                val: Math.max(val, 30),
+                totalOpenAlexCount: totalOpenAlex,
+                val: Math.max(val, 5),
                 data: galaxy,
                 x: 0, y: 0,
                 field: 'Galaxy',
                 group: galaxy.group || 'Uncategorized',
                 iconPath: galaxy.iconPath || null,
                 citationCount: galaxy.totalCitations || 0,
-                hasPapers: (galaxy.nodeCount > 0) && !!galaxy.nodesFile,
+                hasPapers: (galaxy.nodeCount > 0 || galaxy.totalWorksCount > 0) && !!galaxy.nodesFile,
                 nodesFile: galaxy.nodesFile || null,
                 edgesFile: galaxy.edgesFile || null,
             };

@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:docs.openalex.org)",
+      "WebFetch(domain:developers.openalex.org)",
+      "Bash(curl -s \"https://api.openalex.org/topics?search=infant+nutrition&per-page=20\")",
+      "Bash(python -c ' *)",
+      "Bash(python backend/build_data.py)",
+      "Bash(netstat -ano)",
+      "Bash(findstr \":300\")",
+      "mcp__Claude_in_Chrome__tabs_context_mcp"
+    ]
+  }
+}

@@ -17,31 +17,77 @@ import glob
 import json
 import os
 import sqlite3
+import sys
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.path.normpath(os.path.join(SCRIPT_DIR, '..', 'data'))
 OUT_DIR = os.path.normpath(os.path.join(SCRIPT_DIR, '..', 'frontend', 'public'))
 
-# Maps topic key → icon category (for loremflickr via categoryIcons.js)
-TOPIC_ICON_MAP = {
-    "peanut_allergy":          "peanuts",
-    "tree_nut_allergy":        "tree-nuts",
-    "egg_allergy":             "eggs",
-    "cow_milk_allergy":        "cow-milk",
-    "complementary_feeding":   "solid-food",
-    "breastfeeding":           "breast-milk",
-    "infant_formula":          "formula",
-    "iron_deficiency":         "iron",
-    "vitamin_d":               "vitamin-d",
-    "gut_microbiome":          "probiotics",
-    "baby_led_weaning":        "solid-food",
-    "sugar_salt_babies":       "general",
-    "omega3_dha":              "omega3",
-    "vegetable_introduction":  "vegetables",
-    "food_texture_progression":"solid-food",
+sys.path.insert(0, SCRIPT_DIR)
+from import_openalex import PREDEFINED_TOPICS
+
+# Derive icon map and group map from PREDEFINED_TOPICS so they stay in sync
+TOPIC_ICON_MAP = {k: v.get("food_type_hint", "general") for k, v in PREDEFINED_TOPICS.items()}
+
+TOPIC_GROUP_MAP = {
+    # allergens
+    "peanut_allergy": "allergens", "egg_allergy": "allergens", "cow_milk_allergy": "allergens",
+    "tree_nut_allergy": "allergens", "wheat_gluten_allergy": "allergens", "soy_allergy": "allergens",
+    "sesame_allergy": "allergens", "fish_shellfish_allergy": "allergens",
+    "multiple_food_allergy": "allergens", "oral_immunotherapy_allergy": "allergens",
+    "early_allergen_introduction": "allergens", "allergy_prevention_diet": "allergens",
+    "eczema_food_allergy": "allergens", "food_allergy_anaphylaxis": "allergens",
+    # feeding
+    "complementary_feeding": "feeding", "breastfeeding": "feeding", "infant_formula": "feeding",
+    "baby_led_weaning": "feeding", "responsive_feeding": "feeding", "donor_breast_milk": "feeding",
+    "mixed_feeding": "feeding", "formula_preparation_safety": "feeding",
+    "extended_breastfeeding": "feeding", "breastfeeding_difficulties": "feeding",
+    "preterm_infant_nutrition": "feeding",
+    # nutrition
+    "iron_deficiency": "nutrition", "vitamin_d": "nutrition", "omega3_dha": "nutrition",
+    "zinc_infant": "nutrition", "calcium_bone_infant": "nutrition", "iodine_infant": "nutrition",
+    "folate_infant": "nutrition", "vitamin_a_infant": "nutrition", "vitamin_b12_infant": "nutrition",
+    "vitamin_k_infant": "nutrition", "choline_infant": "nutrition",
+    "probiotics_infant": "nutrition", "prebiotics_infant": "nutrition",
+    # foods
+    "vegetable_introduction": "foods", "fruit_introduction": "foods", "meat_introduction": "foods",
+    "fish_introduction": "foods", "dairy_introduction": "foods", "legume_introduction": "foods",
+    "whole_grain_infant": "foods", "organic_baby_food": "foods", "sugar_salt_babies": "foods",
+    "ultra_processed_infant": "foods", "commercial_baby_food": "foods", "plant_based_infant": "foods",
+    # gut
+    "gut_microbiome": "gut", "infant_colic": "gut", "infant_constipation": "gut",
+    "infant_reflux": "gut", "gut_dysbiosis_infant": "gut", "food_texture_progression": "gut",
+    # development
+    "infant_growth_faltering": "development", "childhood_obesity_diet": "development",
+    "stunting_wasting": "development", "brain_development_nutrition": "development",
+    "catch_up_growth": "development", "dental_health_infant": "development",
+    "toddler_milk_drinks": "development",
+    # behaviour
+    "food_neophobia": "behaviour", "picky_eating": "behaviour", "feeding_difficulties": "behaviour",
+    "appetite_regulation": "behaviour", "flavor_learning": "behaviour",
+    "mealtime_behaviour": "behaviour", "division_of_responsibility": "behaviour",
+    # maternal
+    "maternal_diet_breastmilk": "maternal", "maternal_nutrition_pregnancy": "maternal",
+    "prenatal_allergy_prevention": "maternal", "gestational_diabetes_feeding": "maternal",
+    "maternal_microbiome": "maternal", "prenatal_omega3": "maternal",
+    "maternal_iodine_pregnancy": "maternal", "maternal_anaemia_infant": "maternal",
+    # special
+    "low_birth_weight_feeding": "special", "celiac_disease_infant": "special",
+    "fpies": "special", "eosinophilic_esophagitis": "special", "cleft_palate_feeding": "special",
+    "downs_syndrome_feeding": "special", "immune_development_diet": "special",
+    "fortified_complementary_foods": "special",
+    # safety
+    "heavy_metals_baby_food": "safety", "pesticides_infant_food": "safety",
+    "nitrates_baby_food": "safety", "microplastics_formula": "safety",
+    "bpa_packaging_infant": "safety", "food_safety_preparation": "safety",
+    # socioeconomic
+    "food_insecurity_infant": "socioeconomic", "cultural_complementary_feeding": "socioeconomic",
+    "global_malnutrition_infant": "socioeconomic", "baby_food_marketing": "socioeconomic",
+    "baby_food_labelling": "socioeconomic", "socioeconomic_infant_diet": "socioeconomic",
+    "sleep_feeding_infant": "socioeconomic", "screen_time_feeding": "socioeconomic",
 }
 
-# Maps primary_field → galaxy group
+# Maps primary_field → galaxy group (fallback when AI enrichment has run)
 FIELD_TO_GROUP = {
     "Allergen Introduction":   "allergens",
     "Feeding Milestones":      "feeding",
@@ -78,27 +124,36 @@ def build_galaxy_node(topic_key, conn, data_sub_path):
     total_citations = sum(r["cited_by_count"] or 0 for r in rows)
     years = [r["year"] for r in rows if r["year"]]
 
-    works_by_decade = {}
+    # worksByDecade as array of {decade, works_count} — required by the frontend
+    decade_counts = {}
     for r in rows:
         if r["year"]:
-            decade = f"{(r['year'] // 10) * 10}s"
-            works_by_decade[decade] = works_by_decade.get(decade, 0) + 1
+            decade = (r["year"] // 10) * 10
+            decade_counts[decade] = decade_counts.get(decade, 0) + 1
+    works_by_decade = [
+        {"decade": d, "works_count": c}
+        for d, c in sorted(decade_counts.items())
+    ]
 
-    # Dominant primary field
-    field_counts = {}
-    for r in rows:
-        f = r["AI_primary_field"] or "Unassigned"
-        field_counts[f] = field_counts.get(f, 0) + 1
-    dominant_field = max(field_counts, key=field_counts.get) if field_counts else "Unassigned"
-    group = FIELD_TO_GROUP.get(dominant_field, "general")
+    # Group: prefer topic map, fall back to AI primary field mapping
+    group = TOPIC_GROUP_MAP.get(topic_key)
+    if not group:
+        field_counts = {}
+        for r in rows:
+            f = r["AI_primary_field"] or "Unassigned"
+            field_counts[f] = field_counts.get(f, 0) + 1
+        dominant_field = max(field_counts, key=field_counts.get) if field_counts else "Unassigned"
+        group = FIELD_TO_GROUP.get(dominant_field, "general")
 
+    cfg = PREDEFINED_TOPICS.get(topic_key, {})
+    display_name = cfg.get("name") or topic_name(topic_key)
     icon_category = TOPIC_ICON_MAP.get(topic_key, "general")
 
     return {
         "id": topic_key,
-        "name": topic_name(topic_key),
+        "name": display_name,
         "group": group,
-        "primaryField": dominant_field,
+        "primaryField": cfg.get("food_type_hint", "general"),
         "totalWorksCount": total,
         "totalCitations": total_citations,
         "iconCategory": icon_category,
@@ -185,21 +240,61 @@ def export_topic(topic_key, db_path, out_dir):
         conn.close()
 
 
+def load_topic_counts(data_dir):
+    path = os.path.join(data_dir, "topic_counts.json")
+    if os.path.exists(path):
+        with open(path) as f:
+            return json.load(f)
+    return {}
+
+
+def make_stub_node(topic_key, topic_counts):
+    cfg = PREDEFINED_TOPICS.get(topic_key, {})
+    oac = topic_counts.get(topic_key, 0)
+    return {
+        "id": topic_key,
+        "name": cfg.get("name") or topic_name(topic_key),
+        "group": TOPIC_GROUP_MAP.get(topic_key, "general"),
+        "primaryField": cfg.get("food_type_hint", "general"),
+        "totalWorksCount": 0,
+        "totalOpenAlexCount": oac,
+        "iconCategory": TOPIC_ICON_MAP.get(topic_key, "general"),
+        "hasPapers": False,
+        "nodesFile": f"data/{topic_key}/nodes.json",
+        "edgesFile": f"data/{topic_key}/edges.json",
+        "worksByDecade": [],
+        "yearRange": [2000, 2024],
+    }
+
+
 def build_universe(data_dir, out_dir):
+    topic_counts = load_topic_counts(data_dir)
     dbs = sorted(glob.glob(os.path.join(data_dir, "papers_*.db")))
-    if not dbs:
-        print(f"[warn] No databases found in {data_dir}")
-        print("Run import_openalex.py first.")
-        return
 
     print(f"[build] Found {len(dbs)} databases")
     galaxy_nodes = []
+    processed = set()
+
     for db_path in dbs:
         key = topic_key_from_path(db_path)
+        processed.add(key)
         print(f"[build] Processing {key}...")
         node = export_topic(key, db_path, out_dir)
         if node:
+            node["totalOpenAlexCount"] = topic_counts.get(key, node["totalWorksCount"])
             galaxy_nodes.append(node)
+        else:
+            # DB exists but is empty — include as stub so it appears in the map
+            stub = make_stub_node(key, topic_counts)
+            galaxy_nodes.append(stub)
+            print(f"  [stub] {key}: empty DB, {stub['totalOpenAlexCount']:,} in OpenAlex")
+
+    # Add any predefined topics with no DB at all
+    for key in PREDEFINED_TOPICS:
+        if key not in processed:
+            stub = make_stub_node(key, topic_counts)
+            galaxy_nodes.append(stub)
+            print(f"  [stub] {key}: no DB, {stub['totalOpenAlexCount']:,} in OpenAlex")
 
     universe = {
         "version": 1,

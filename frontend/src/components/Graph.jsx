@@ -430,9 +430,14 @@ export const Graph = ({
                 return;
             }
             if (isFoodGalaxy && !d.isMenuNode) {
-                const minR = 55, maxR = 90;
-                const total = d.totalWorksCount || 0;
-                const r = total > 0 ? minR + (maxR - minR) * Math.sqrt(Math.min(total, 500) / 500) : minR;
+                const minR = 20, maxR = 160;
+                const total = d.totalOpenAlexCount || d.totalWorksCount || 0;
+                // Data-calibrated log scale: logMin≈log10(2), logMax≈log10(24000)
+                // Maps actual data range → [minR, maxR] giving ~8x size ratio
+                const logFrac = total > 0
+                    ? Math.min(Math.max((Math.log10(total) - 0.3) / 4.1, 0), 1)
+                    : 0;
+                const r = minR + (maxR - minR) * logFrac;
                 const color = cScale(d.group || 'Default');
 
                 // Update clip path circle
@@ -481,7 +486,7 @@ export const Graph = ({
                     .style("font-family", "Inter, system-ui, sans-serif")
                     .style("font-size", `${Math.max(11, Math.min(15, r * 0.18))}px`)
                     .style("font-weight", "600").style("color", "#1e293b").style("line-height", "1.2")
-                    .html(`<div>${d.name}</div>${total > 0 ? `<div style="font-weight:400;font-size:0.8em;color:#64748b;">${total} papers</div>` : '<div style="font-weight:400;font-size:0.8em;color:#94a3b8;">No data yet</div>'}`);
+                    .html(`<div>${d.name}</div>${total > 0 ? `<div style="font-weight:400;font-size:0.8em;color:#64748b;">${total.toLocaleString()} papers</div>` : '<div style="font-weight:400;font-size:0.8em;color:#94a3b8;">No data yet</div>'}`);
 
                 el.select(".label-main").text("");
                 el.select(".label-sub").text("");
@@ -562,8 +567,8 @@ export const Graph = ({
                             .attr("d", roundedHexagonPath(val * 2.5))
                             .attr("fill", cScale(d.group || d.data?.group || "Default"))
                             .attr("fill-opacity", 0.4)
-                            .attr("stroke", d.hasPapers ? "#475569" : "none")
-                            .attr("stroke-width", d.hasPapers ? 12 : 0);
+                            .attr("stroke", "none")
+                            .attr("stroke-width", 0);
                         el.select(".core")
                             .attr("d", roundedHexagonPath(val * 0.8))
                             .attr("r", null)
@@ -595,7 +600,7 @@ export const Graph = ({
                             .style("display", "flex").style("align-items", "center")
                             .style("justify-content", "center").style("text-align", "center")
                             .style("font-family", "Inter, system-ui, sans-serif")
-                            .style("font-size", `${Math.max(10, Math.min(16, val * 0.28))}px`)
+                            .style("font-size", `${Math.min(15, val * 0.28)}px`)
                             .style("font-weight", "600").style("color", "#1e293b")
                             .style("line-height", "1.2").style("word-break", "break-word")
                             .style("overflow-wrap", "break-word").style("white-space", "normal")
