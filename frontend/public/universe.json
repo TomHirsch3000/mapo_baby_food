@@ -14,7 +14,7 @@
       "hasPapers": false,
       "nodesFile": "data/peanut_allergy/nodes.json",
       "edgesFile": "data/peanut_allergy/edges.json",
-      "worksByDecade": {},
+      "worksByDecade": [],
       "yearRange": [2000, 2024]
     },
     {
@@ -28,7 +28,7 @@
       "hasPapers": false,
       "nodesFile": "data/egg_allergy/nodes.json",
       "edgesFile": "data/egg_allergy/edges.json",
-      "worksByDecade": {},
+      "worksByDecade": [],
       "yearRange": [2000, 2024]
     },
     {
@@ -42,7 +42,7 @@
       "hasPapers": false,
       "nodesFile": "data/cow_milk_allergy/nodes.json",
       "edgesFile": "data/cow_milk_allergy/edges.json",
-      "worksByDecade": {},
+      "worksByDecade": [],
       "yearRange": [2000, 2024]
     },
     {
@@ -56,7 +56,7 @@
       "hasPapers": false,
       "nodesFile": "data/complementary_feeding/nodes.json",
       "edgesFile": "data/complementary_feeding/edges.json",
-      "worksByDecade": {},
+      "worksByDecade": [],
       "yearRange": [2000, 2024]
     },
     {
@@ -70,7 +70,7 @@
       "hasPapers": false,
       "nodesFile": "data/breastfeeding/nodes.json",
       "edgesFile": "data/breastfeeding/edges.json",
-      "worksByDecade": {},
+      "worksByDecade": [],
       "yearRange": [2000, 2024]
     },
     {
@@ -84,7 +84,7 @@
       "hasPapers": false,
       "nodesFile": "data/infant_formula/nodes.json",
       "edgesFile": "data/infant_formula/edges.json",
-      "worksByDecade": {},
+      "worksByDecade": [],
       "yearRange": [2000, 2024]
     },
     {
@@ -98,7 +98,7 @@
       "hasPapers": false,
       "nodesFile": "data/iron_deficiency/nodes.json",
       "edgesFile": "data/iron_deficiency/edges.json",
-      "worksByDecade": {},
+      "worksByDecade": [],
       "yearRange": [2000, 2024]
     },
     {
@@ -112,7 +112,7 @@
       "hasPapers": false,
       "nodesFile": "data/vitamin_d/nodes.json",
       "edgesFile": "data/vitamin_d/edges.json",
-      "worksByDecade": {},
+      "worksByDecade": [],
       "yearRange": [2000, 2024]
     },
     {
@@ -126,7 +126,7 @@
       "hasPapers": false,
       "nodesFile": "data/omega3_dha/nodes.json",
       "edgesFile": "data/omega3_dha/edges.json",
-      "worksByDecade": {},
+      "worksByDecade": [],
       "yearRange": [2000, 2024]
     },
     {
@@ -140,7 +140,7 @@
       "hasPapers": false,
       "nodesFile": "data/gut_microbiome/nodes.json",
       "edgesFile": "data/gut_microbiome/edges.json",
-      "worksByDecade": {},
+      "worksByDecade": [],
       "yearRange": [2000, 2024]
     },
     {
@@ -154,7 +154,7 @@
       "hasPapers": false,
       "nodesFile": "data/baby_led_weaning/nodes.json",
       "edgesFile": "data/baby_led_weaning/edges.json",
-      "worksByDecade": {},
+      "worksByDecade": [],
       "yearRange": [2000, 2024]
     },
     {
@@ -168,7 +168,7 @@
       "hasPapers": false,
       "nodesFile": "data/vegetable_introduction/nodes.json",
       "edgesFile": "data/vegetable_introduction/edges.json",
-      "worksByDecade": {},
+      "worksByDecade": [],
       "yearRange": [2000, 2024]
     }
   ]
