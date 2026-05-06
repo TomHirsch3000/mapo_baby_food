@@ -8,7 +8,8 @@
       "Bash(python backend/build_data.py)",
       "Bash(netstat -ano)",
       "Bash(findstr \":300\")",
-      "mcp__Claude_in_Chrome__tabs_context_mcp"
+      "mcp__Claude_in_Chrome__tabs_context_mcp",
+      "Bash(git add *)"
     ]
   }
 }
