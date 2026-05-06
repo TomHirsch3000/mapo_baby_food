@@ -54,7 +54,7 @@ export const Graph = ({
     const resolveIconHref = (iconPath) => {
         if (!iconPath) return null;
         if (iconPath.startsWith('http://') || iconPath.startsWith('https://')) return iconPath;
-        return process.env.PUBLIC_URL + iconPath;
+        return iconPath;
     };
 
     useEffect(() => {

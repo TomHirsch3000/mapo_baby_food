@@ -61,7 +61,7 @@ export const useGraphData = (viewMode, activeGalaxy, groupingMode, yGroupingMode
         abortControllerRef.current = controller;
 
         const { id, minCitations, maxPapers } = detailFilter;
-        const backendUrl = process.env.REACT_APP_API_URL || 'http://localhost:5001';
+        const backendUrl = import.meta.env.VITE_API_URL || 'http://localhost:5001';
         const url = `${backendUrl}/api/paper/${id}/details?min_citations=${minCitations}&max_papers=${maxPapers}`;
 
         const timeoutId = setTimeout(() => {
@@ -110,7 +110,7 @@ export const useGraphData = (viewMode, activeGalaxy, groupingMode, yGroupingMode
         abortControllerRef.current = controller;
 
         const { query, minCitations, maxPapers } = searchFilter;
-        const backendUrl = process.env.REACT_APP_API_URL || 'http://localhost:5001';
+        const backendUrl = import.meta.env.VITE_API_URL || 'http://localhost:5001';
         const url = `${backendUrl}/api/search?query=${encodeURIComponent(query)}&min_citations=${minCitations}&max_papers=${maxPapers}`;
 
         fetch(url, { signal: controller.signal })
