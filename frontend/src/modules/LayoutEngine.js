@@ -250,7 +250,7 @@ export class LayoutEngine {
     }
 
     applyHomeLayout(nodes, sim) {
-        const spacing = Math.min(320, this.width * 0.22);
+        const spacing = Math.max(300, Math.min(450, this.width * 0.28));
         nodes.forEach((n, i) => {
             n.fx = (i === 0 ? -1 : 1) * spacing;
             n.fy = 0;

@@ -709,6 +709,11 @@ export const Graph = ({
                 }
             }
 
+            if (isHome) {
+                // Center (0,0) in the viewport so the two ±spacing nodes are symmetrical
+                svg.call(zoom.transform, d3.zoomIdentity.translate(width / 2, height / 2).scale(1));
+            }
+
             if ((viewMode === 'UNIVERSE' || viewMode === 'FOOD_GALAXY') && layoutMode === 'CENTRAL' && (firstDataRenderRef.current || prevLayoutMode.current !== layoutMode)) {
                 const layoutNodes = currentNodes.filter(n => !n.isMenuNode);
                 const xExtent = d3.extent(layoutNodes, d => d.x);
