@@ -397,6 +397,96 @@ export const Graph = ({
         const cScale = scales.colorScale || d3.scaleOrdinal(d3.schemeTableau10);
         allNodes.each(function (d) {
             const el = d3.select(this);
+            if (isHome) {
+                const colors = { food_map: '#10b981', recommendations: '#6366f1' };
+                const color = colors[d.id] || '#6366f1';
+                const r = 110;
+                el.select(".home-node-orbit")
+                    .attr("r", r + 20)
+                    .attr("fill", color)
+                    .attr("fill-opacity", 0.08)
+                    .attr("stroke", color)
+                    .attr("stroke-opacity", 0.2)
+                    .attr("stroke-width", 1.5);
+                el.select(".home-node-core")
+                    .attr("r", r)
+                    .attr("fill", color)
+                    .attr("fill-opacity", 0.15)
+                    .attr("stroke", color)
+                    .attr("stroke-width", 2)
+                    .attr("stroke-opacity", 0.6);
+                el.select(".home-node-fo")
+                    .attr("x", -(r)).attr("y", -(r * 0.6))
+                    .attr("width", r * 2).attr("height", r * 1.2);
+                el.select(".home-node-div")
+                    .style("width", `${r * 2}px`).style("height", `${r * 1.2}px`)
+                    .style("display", "flex").style("flex-direction", "column")
+                    .style("align-items", "center").style("justify-content", "center")
+                    .style("text-align", "center").style("font-family", "Inter, system-ui, sans-serif")
+                    .style("color", color).style("pointer-events", "none")
+                    .html(`<div style="font-size:22px;font-weight:700;margin-bottom:6px;">${d.name}</div><div style="font-size:13px;opacity:0.7;line-height:1.4;">${d.description || ''}</div>`);
+                el.select(".label-main").text("");
+                el.select(".label-sub").text("");
+                return;
+            }
+            if (isFoodGalaxy && !d.isMenuNode) {
+                const minR = 55, maxR = 90;
+                const total = d.totalWorksCount || 0;
+                const r = total > 0 ? minR + (maxR - minR) * Math.sqrt(Math.min(total, 500) / 500) : minR;
+                const color = cScale(d.group || 'Default');
+
+                // Update clip path circle
+                el.select("clipPath circle").attr("r", r).attr("cx", 0).attr("cy", 0);
+
+                // Orbit/glow ring
+                el.select(".food-orbit")
+                    .attr("r", r + 8)
+                    .attr("fill", color)
+                    .attr("fill-opacity", 0.12)
+                    .attr("stroke", "none");
+
+                // Food image
+                const iconCategory = d.data?.iconCategory;
+                const imgSrc = iconCategory ? resolveIconHref(getIconPath({ iconCategory })) : null;
+                if (imgSrc) {
+                    el.select(".food-img")
+                        .attr("href", imgSrc)
+                        .attr("x", -r).attr("y", -r)
+                        .attr("width", r * 2).attr("height", r * 2)
+                        .attr("preserveAspectRatio", "xMidYMid slice")
+                        .style("display", null);
+                } else {
+                    el.select(".food-img").style("display", "none");
+                }
+
+                // Ring border
+                el.select(".food-ring")
+                    .attr("r", r)
+                    .attr("fill", imgSrc ? "none" : color)
+                    .attr("fill-opacity", imgSrc ? 0 : 0.3)
+                    .attr("stroke", color)
+                    .attr("stroke-width", 3)
+                    .attr("stroke-opacity", 0.7);
+
+                // Label below
+                const labelW = r * 2.8;
+                el.select(".food-label-fo")
+                    .attr("x", -labelW / 2).attr("y", r + 6)
+                    .attr("width", labelW).attr("height", 50)
+                    .style("overflow", "visible").style("pointer-events", "none");
+                el.select(".food-label-div")
+                    .style("width", `${labelW}px`)
+                    .style("display", "flex").style("flex-direction", "column")
+                    .style("align-items", "center").style("text-align", "center")
+                    .style("font-family", "Inter, system-ui, sans-serif")
+                    .style("font-size", `${Math.max(11, Math.min(15, r * 0.18))}px`)
+                    .style("font-weight", "600").style("color", "#1e293b").style("line-height", "1.2")
+                    .html(`<div>${d.name}</div>${total > 0 ? `<div style="font-weight:400;font-size:0.8em;color:#64748b;">${total} papers</div>` : '<div style="font-weight:400;font-size:0.8em;color:#94a3b8;">No data yet</div>'}`);
+
+                el.select(".label-main").text("");
+                el.select(".label-sub").text("");
+                return;
+            }
             if (isGalaxy) {
                 if (layoutMode === 'TIMELINE') {
                     const w = d._layoutWidth || 30;
@@ -619,7 +709,7 @@ export const Graph = ({
                 }
             }
 
-            if (viewMode === 'UNIVERSE' && layoutMode === 'CENTRAL' && (firstDataRenderRef.current || prevLayoutMode.current !== layoutMode)) {
+            if ((viewMode === 'UNIVERSE' || viewMode === 'FOOD_GALAXY') && layoutMode === 'CENTRAL' && (firstDataRenderRef.current || prevLayoutMode.current !== layoutMode)) {
                 const layoutNodes = currentNodes.filter(n => !n.isMenuNode);
                 const xExtent = d3.extent(layoutNodes, d => d.x);
                 const yExtent = d3.extent(layoutNodes, d => d.y);

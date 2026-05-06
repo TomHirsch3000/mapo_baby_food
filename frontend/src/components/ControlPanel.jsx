@@ -10,6 +10,7 @@ export const ControlPanel = ({
     activeGroupLabel,
     galaxyName,
     searchQuery,
+    onBackToHome,
     onBackToUniverse,
     onBackToGalaxy,
     onBackFromSearch,
@@ -17,7 +18,8 @@ export const ControlPanel = ({
     onGroupingChange,
     onSearch,
     paperIndex,
-    onAutocompleteSelect
+    onAutocompleteSelect,
+    fieldSource
 }) => {
 
     const layoutOptions = [
@@ -33,8 +35,12 @@ export const ControlPanel = ({
     ];
 
     let headerTitle = "Map of Baby Food Science";
-    if (viewMode === 'UNIVERSE') {
+    if (viewMode === 'HOME') {
         headerTitle = "Map of Baby Food Science";
+    } else if (viewMode === 'FOOD_GALAXY') {
+        headerTitle = "Food Map";
+    } else if (viewMode === 'UNIVERSE') {
+        headerTitle = "Recommendations";
     } else if (viewMode === 'GALAXY') {
         headerTitle = galaxyName || "Topic View";
     } else if (viewMode === 'FIELD' || viewMode === 'DETAIL') {
@@ -48,11 +54,17 @@ export const ControlPanel = ({
     return (
         <div className="galaxy-header">
             <div className="controls-row" style={{ display: 'flex', flexDirection: 'column', gap: '12px', alignItems: 'flex-start', position: 'absolute', top: 20, left: 20, pointerEvents: 'auto' }}>
-                {viewMode === 'GALAXY' && <button className="back-to-galaxy" onClick={onBackToUniverse}>← Back</button>}
-                {(viewMode === 'FIELD' || viewMode === 'DETAIL') && <button className="back-to-galaxy" onClick={onBackToGalaxy}>← Back</button>}
+                {viewMode === 'FOOD_GALAXY' && <button className="back-to-galaxy" onClick={onBackToHome}>← Home</button>}
+                {viewMode === 'UNIVERSE' && <button className="back-to-galaxy" onClick={onBackToHome}>← Home</button>}
+                {viewMode === 'GALAXY' && <button className="back-to-galaxy" onClick={onBackToUniverse}>← Recommendations</button>}
+                {(viewMode === 'FIELD' || viewMode === 'DETAIL') && (
+                    <button className="back-to-galaxy" onClick={onBackToGalaxy}>
+                        ← {fieldSource === 'FOOD_GALAXY' ? 'Food Map' : 'Back'}
+                    </button>
+                )}
                 {isSearch && <button className="back-to-galaxy" onClick={onBackFromSearch}>← Back</button>}
 
-                {!isSearch && (
+                {!isSearch && viewMode !== 'HOME' && (
                     <div className="control-group" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                         <strong style={{ color: '#64748b', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Layout</strong>
                         <div className="toggle-group">
