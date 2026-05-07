@@ -23,301 +23,138 @@ DATA_DIR = os.path.normpath(os.path.join(SCRIPT_DIR, '..', 'data'))
 FOOD_COUNTS_PATH = os.path.join(DATA_DIR, "food_counts.json")
 
 OPENALEX_BASE = "https://api.openalex.org"
-EMAIL = os.environ.get("OPENALEX_EMAIL", "research@example.com")
+EMAIL = os.environ.get("OPENALEX_EMAIL", "tom.hirsch3000@gmail.com")
 
 # ── Predefined foods with OpenAlex queries ────────────────────────────────────
 # Each query targets: this food + infant/child context
 PREDEFINED_FOODS = {
 
-    # ── VEGETABLES (9) ───────────────────────────────────────────────────────
-    "broccoli": {
-        "name": "Broccoli",
-        "query": "broccoli infant child vegetable introduction nutrition cancer glucosinolate",
-        "icon_category": "broccoli",
-        "group": "vegetables",
-    },
-    "carrot": {
-        "name": "Carrot",
-        "query": "carrot infant child vegetable beta-carotene vitamin A introduction puree",
-        "icon_category": "carrot",
-        "group": "vegetables",
-    },
-    "sweet_potato": {
-        "name": "Sweet Potato",
-        "query": "sweet potato infant complementary feeding beta-carotene vitamin A puree",
-        "icon_category": "sweet-potato",
-        "group": "vegetables",
-    },
-    "spinach": {
-        "name": "Spinach",
-        "query": "spinach infant child leafy greens iron nitrate complementary food",
-        "icon_category": "spinach",
-        "group": "vegetables",
-    },
-    "pea": {
-        "name": "Peas",
-        "query": "pea infant vegetable protein complementary food introduction puree",
-        "icon_category": "pea",
-        "group": "vegetables",
-    },
-    "avocado": {
-        "name": "Avocado",
-        "query": "avocado infant child healthy fat monounsaturated nutrition complementary",
-        "icon_category": "avocado",
-        "group": "vegetables",
-    },
-    "tomato": {
-        "name": "Tomato",
-        "query": "tomato infant child lycopene antioxidant vegetable introduction diet",
-        "icon_category": "tomato",
-        "group": "vegetables",
-    },
-    "zucchini": {
-        "name": "Zucchini",
-        "query": "zucchini courgette infant vegetable complementary feeding puree nutrition",
-        "icon_category": "zucchini",
-        "group": "vegetables",
-    },
-    "cauliflower": {
-        "name": "Cauliflower",
-        "query": "cauliflower infant child vegetable introduction nutrition glucosinolate",
-        "icon_category": "cauliflower",
-        "group": "vegetables",
-    },
+    # ── VEGETABLES ───────────────────────────────────────────────────────────
+    "broccoli":         {"name": "Broccoli",           "query": "broccoli infant child nutrition",                   "icon_category": "broccoli",        "group": "vegetables"},
+    "carrot":           {"name": "Carrot",              "query": "carrot infant child nutrition",                     "icon_category": "carrot",          "group": "vegetables"},
+    "sweet_potato":     {"name": "Sweet Potato",        "query": "sweet potato yam infant child nutrition",           "icon_category": "sweet-potato",    "group": "vegetables"},
+    "spinach":          {"name": "Spinach",             "query": "spinach infant child nutrition",                    "icon_category": "spinach",         "group": "vegetables"},
+    "pea":              {"name": "Peas",                "query": "pea green pea infant child nutrition",              "icon_category": "pea",             "group": "vegetables"},
+    "avocado":          {"name": "Avocado",             "query": "avocado infant child nutrition",                    "icon_category": "avocado",         "group": "vegetables"},
+    "tomato":           {"name": "Tomato",              "query": "tomato infant child nutrition",                     "icon_category": "tomato",          "group": "vegetables"},
+    "zucchini":         {"name": "Zucchini",            "query": "zucchini courgette infant child nutrition",         "icon_category": "zucchini",        "group": "vegetables"},
+    "cauliflower":      {"name": "Cauliflower",         "query": "cauliflower infant child nutrition",                "icon_category": "cauliflower",     "group": "vegetables"},
+    "beetroot":         {"name": "Beetroot",            "query": "beetroot beet infant child nutrition",              "icon_category": "beetroot",        "group": "vegetables"},
+    "parsnip":          {"name": "Parsnip",             "query": "parsnip infant child nutrition",                    "icon_category": "parsnip",         "group": "vegetables"},
+    "butternut_squash": {"name": "Butternut Squash",    "query": "butternut squash infant child nutrition",           "icon_category": "butternut-squash","group": "vegetables"},
+    "green_bean":       {"name": "Green Bean",          "query": "green bean infant child nutrition",                 "icon_category": "green-bean",      "group": "vegetables"},
+    "kale":             {"name": "Kale",                "query": "kale infant child nutrition",                       "icon_category": "kale",            "group": "vegetables"},
+    "bell_pepper":      {"name": "Bell Pepper",         "query": "bell pepper capsicum infant child nutrition",       "icon_category": "bell-pepper",     "group": "vegetables"},
+    "cucumber":         {"name": "Cucumber",            "query": "cucumber infant child nutrition",                   "icon_category": "cucumber",        "group": "vegetables"},
+    "leek":             {"name": "Leek",                "query": "leek infant child nutrition",                       "icon_category": "leek",            "group": "vegetables"},
 
-    # ── FRUITS (9) ───────────────────────────────────────────────────────────
-    "apple": {
-        "name": "Apple",
-        "query": "apple infant fruit introduction puree juice complementary feeding polyphenol",
-        "icon_category": "apple",
-        "group": "fruits",
-    },
-    "banana": {
-        "name": "Banana",
-        "query": "banana infant fruit potassium complementary feeding weaning puree",
-        "icon_category": "banana",
-        "group": "fruits",
-    },
-    "mango": {
-        "name": "Mango",
-        "query": "mango infant child tropical fruit vitamin C complementary feeding developing countries",
-        "icon_category": "mango",
-        "group": "fruits",
-    },
-    "strawberry": {
-        "name": "Strawberry",
-        "query": "strawberry infant child berry vitamin C antioxidant introduction allergy",
-        "icon_category": "strawberry",
-        "group": "fruits",
-    },
-    "blueberry": {
-        "name": "Blueberry",
-        "query": "blueberry infant child anthocyanin antioxidant cognitive development brain",
-        "icon_category": "blueberry",
-        "group": "fruits",
-    },
-    "pear": {
-        "name": "Pear",
-        "query": "pear infant fruit introduction complementary feeding fibre constipation",
-        "icon_category": "pear",
-        "group": "fruits",
-    },
-    "orange": {
-        "name": "Orange",
-        "query": "orange infant citrus fruit vitamin C complementary feeding introduction",
-        "icon_category": "orange-fruit",
-        "group": "fruits",
-    },
-    "grape": {
-        "name": "Grape",
-        "query": "grape infant child fruit resveratrol polyphenol juice choking hazard",
-        "icon_category": "grape",
-        "group": "fruits",
-    },
-    "watermelon": {
-        "name": "Watermelon",
-        "query": "watermelon infant child fruit lycopene hydration complementary feeding",
-        "icon_category": "watermelon",
-        "group": "fruits",
-    },
+    # ── FRUITS ───────────────────────────────────────────────────────────────
+    "apple":            {"name": "Apple",               "query": "apple infant child nutrition",                      "icon_category": "apple",           "group": "fruits"},
+    "banana":           {"name": "Banana",              "query": "banana infant child nutrition",                     "icon_category": "banana",          "group": "fruits"},
+    "mango":            {"name": "Mango",               "query": "mango infant child nutrition",                      "icon_category": "mango",           "group": "fruits"},
+    "strawberry":       {"name": "Strawberry",          "query": "strawberry infant child nutrition",                 "icon_category": "strawberry",      "group": "fruits"},
+    "blueberry":        {"name": "Blueberry",           "query": "blueberry infant child nutrition",                  "icon_category": "blueberry",       "group": "fruits"},
+    "pear":             {"name": "Pear",                "query": "pear infant child nutrition",                       "icon_category": "pear",            "group": "fruits"},
+    "orange":           {"name": "Orange",              "query": "orange citrus infant child nutrition",              "icon_category": "orange-fruit",    "group": "fruits"},
+    "grape":            {"name": "Grape",               "query": "grape infant child nutrition",                      "icon_category": "grape",           "group": "fruits"},
+    "watermelon":       {"name": "Watermelon",          "query": "watermelon infant child nutrition",                 "icon_category": "watermelon",      "group": "fruits"},
+    "kiwi":             {"name": "Kiwi",                "query": "kiwi kiwifruit infant child nutrition",             "icon_category": "kiwi",            "group": "fruits"},
+    "papaya":           {"name": "Papaya",              "query": "papaya pawpaw infant child nutrition",              "icon_category": "papaya",          "group": "fruits"},
+    "peach":            {"name": "Peach",               "query": "peach infant child nutrition",                      "icon_category": "peach",           "group": "fruits"},
+    "plum":             {"name": "Plum",                "query": "plum infant child nutrition",                       "icon_category": "plum",            "group": "fruits"},
+    "raspberry":        {"name": "Raspberry",           "query": "raspberry infant child nutrition",                  "icon_category": "raspberry",       "group": "fruits"},
+    "apricot":          {"name": "Apricot",             "query": "apricot infant child nutrition",                    "icon_category": "apricot",         "group": "fruits"},
 
-    # ── PROTEINS / MEAT (6) ──────────────────────────────────────────────────
-    "chicken": {
-        "name": "Chicken",
-        "query": "chicken infant child meat protein iron complementary feeding introduction poultry",
-        "icon_category": "chicken-meat",
-        "group": "proteins",
-    },
-    "beef": {
-        "name": "Beef",
-        "query": "beef infant child meat protein iron haem complementary feeding red meat",
-        "icon_category": "beef",
-        "group": "proteins",
-    },
-    "salmon": {
-        "name": "Salmon",
-        "query": "salmon infant child fish omega-3 DHA introduction complementary feeding",
-        "icon_category": "salmon-fish",
-        "group": "proteins",
-    },
-    "sardine": {
-        "name": "Sardine",
-        "query": "sardine oily fish infant child omega-3 calcium complementary feeding introduction",
-        "icon_category": "sardine",
-        "group": "proteins",
-    },
-    "egg": {
-        "name": "Egg",
-        "query": "egg infant choline protein introduction complementary feeding allergy prevention",
-        "icon_category": "egg-food",
-        "group": "proteins",
-    },
-    "lentil": {
-        "name": "Lentil",
-        "query": "lentil infant child legume iron protein plant-based complementary feeding",
-        "icon_category": "lentil",
-        "group": "proteins",
-    },
+    # ── PROTEINS ─────────────────────────────────────────────────────────────
+    "chicken":          {"name": "Chicken",             "query": "chicken poultry infant child nutrition",            "icon_category": "chicken-meat",    "group": "proteins"},
+    "beef":             {"name": "Beef",                "query": "beef infant child nutrition",                       "icon_category": "beef",            "group": "proteins"},
+    "salmon":           {"name": "Salmon",              "query": "salmon infant child nutrition",                     "icon_category": "salmon-fish",     "group": "proteins"},
+    "sardine":          {"name": "Sardine",             "query": "sardine oily fish infant child nutrition",          "icon_category": "sardine",         "group": "proteins"},
+    "egg":              {"name": "Egg",                 "query": "egg infant child nutrition",                        "icon_category": "egg-food",        "group": "proteins"},
+    "lentil":           {"name": "Lentil",              "query": "lentil infant child nutrition",                     "icon_category": "lentil",          "group": "proteins"},
+    "tuna":             {"name": "Tuna",                "query": "tuna infant child nutrition",                       "icon_category": "tuna-fish",       "group": "proteins"},
+    "tofu":             {"name": "Tofu",                "query": "tofu bean curd infant child nutrition",             "icon_category": "tofu",            "group": "proteins"},
+    "cod":              {"name": "Cod",                 "query": "cod white fish infant child nutrition",             "icon_category": "cod-fish",        "group": "proteins"},
+    "tempeh":           {"name": "Tempeh",              "query": "tempeh infant child nutrition",                     "icon_category": "tempeh",          "group": "proteins"},
 
-    # ── DAIRY (4) ────────────────────────────────────────────────────────────
-    "cows_milk": {
-        "name": "Cow's Milk",
-        "query": "cow milk whole infant toddler nutrition calcium allergy introduction timing",
-        "icon_category": "cows-milk",
-        "group": "dairy",
-    },
-    "yogurt": {
-        "name": "Yogurt",
-        "query": "yogurt infant toddler complementary food probiotic calcium introduction dairy",
-        "icon_category": "yogurt-food",
-        "group": "dairy",
-    },
-    "cheese": {
-        "name": "Cheese",
-        "query": "cheese infant child calcium protein complementary feeding sodium salt dairy",
-        "icon_category": "cheese-food",
-        "group": "dairy",
-    },
-    "breast_milk": {
-        "name": "Breast Milk",
-        "query": "breast milk human milk composition nutrition infant immunity bioactive",
-        "icon_category": "breast-milk-f",
-        "group": "dairy",
-    },
+    # ── DAIRY ────────────────────────────────────────────────────────────────
+    "cows_milk":        {"name": "Cow's Milk",          "query": "cow milk infant child nutrition",                   "icon_category": "cows-milk",       "group": "dairy"},
+    "yogurt":           {"name": "Yogurt",              "query": "yogurt yoghurt infant child nutrition",             "icon_category": "yogurt-food",     "group": "dairy"},
+    "cheese":           {"name": "Cheese",              "query": "cheese infant child nutrition",                     "icon_category": "cheese-food",     "group": "dairy"},
+    "breast_milk":      {"name": "Breast Milk",         "query": "breast milk human milk infant nutrition",           "icon_category": "breast-milk-f",   "group": "dairy"},
+    "butter":           {"name": "Butter",              "query": "butter infant child nutrition",                     "icon_category": "butter",          "group": "dairy"},
+    "kefir":            {"name": "Kefir",               "query": "kefir infant child nutrition",                      "icon_category": "kefir",           "group": "dairy"},
 
-    # ── GRAINS & CEREALS (5) ─────────────────────────────────────────────────
-    "oats": {
-        "name": "Oats",
-        "query": "oats infant porridge beta-glucan fibre complementary feeding first food",
-        "icon_category": "oats-food",
-        "group": "grains",
-    },
-    "rice": {
-        "name": "Rice",
-        "query": "rice infant complementary food cereal arsenic introduction porridge nutrition",
-        "icon_category": "rice-food",
-        "group": "grains",
-    },
-    "wheat": {
-        "name": "Wheat",
-        "query": "wheat infant gluten introduction complementary feeding celiac allergy timing",
-        "icon_category": "wheat-food",
-        "group": "grains",
-    },
-    "quinoa": {
-        "name": "Quinoa",
-        "query": "quinoa infant child complete protein amino acid complementary feeding nutrition",
-        "icon_category": "quinoa",
-        "group": "grains",
-    },
-    "corn": {
-        "name": "Corn / Maize",
-        "query": "corn maize infant child complementary food staple developing countries nutrition",
-        "icon_category": "corn",
-        "group": "grains",
-    },
+    # ── GRAINS ───────────────────────────────────────────────────────────────
+    "oats":             {"name": "Oats",                "query": "oats oatmeal infant child nutrition",               "icon_category": "oats-food",       "group": "grains"},
+    "rice":             {"name": "Rice",                "query": "rice infant child nutrition",                       "icon_category": "rice-food",       "group": "grains"},
+    "wheat":            {"name": "Wheat",               "query": "wheat infant child nutrition",                      "icon_category": "wheat-food",      "group": "grains"},
+    "quinoa":           {"name": "Quinoa",              "query": "quinoa infant child nutrition",                     "icon_category": "quinoa",          "group": "grains"},
+    "corn":             {"name": "Corn / Maize",        "query": "corn maize infant child nutrition",                 "icon_category": "corn",            "group": "grains"},
+    "barley":           {"name": "Barley",              "query": "barley infant child nutrition",                     "icon_category": "barley",          "group": "grains"},
+    "millet":           {"name": "Millet",              "query": "millet infant child nutrition",                     "icon_category": "millet",          "group": "grains"},
+    "bread":            {"name": "Bread",               "query": "bread infant child nutrition",                      "icon_category": "bread",           "group": "grains"},
+    "buckwheat":        {"name": "Buckwheat",           "query": "buckwheat infant child nutrition",                  "icon_category": "buckwheat",       "group": "grains"},
 
-    # ── LEGUMES & NUTS (5) ───────────────────────────────────────────────────
-    "chickpea": {
-        "name": "Chickpea",
-        "query": "chickpea garbanzo infant child protein iron complementary food developing countries",
-        "icon_category": "chickpea",
-        "group": "legumes",
-    },
-    "kidney_bean": {
-        "name": "Kidney Bean",
-        "query": "kidney bean infant child legume protein iron complementary feeding plant-based",
-        "icon_category": "kidney-bean",
-        "group": "legumes",
-    },
-    "peanut": {
-        "name": "Peanut",
-        "query": "peanut infant introduction protein allergy prevention LEAP early exposure",
-        "icon_category": "peanut-food",
-        "group": "legumes",
-    },
-    "soy": {
-        "name": "Soy",
-        "query": "soy infant formula plant-based protein isoflavone allergy complementary",
-        "icon_category": "soy-food",
-        "group": "legumes",
-    },
-    "almond": {
-        "name": "Almond",
-        "query": "almond nut infant child vitamin E healthy fat introduction allergy prevention",
-        "icon_category": "almond",
-        "group": "legumes",
-    },
+    # ── LEGUMES & NUTS ───────────────────────────────────────────────────────
+    "chickpea":         {"name": "Chickpea",            "query": "chickpea garbanzo infant child nutrition",          "icon_category": "chickpea",        "group": "legumes"},
+    "kidney_bean":      {"name": "Kidney Bean",         "query": "kidney bean infant child nutrition",                "icon_category": "kidney-bean",     "group": "legumes"},
+    "peanut":           {"name": "Peanut",              "query": "peanut groundnut infant child nutrition",           "icon_category": "peanut-food",     "group": "legumes"},
+    "soy":              {"name": "Soy",                 "query": "soy soybean infant child nutrition",                "icon_category": "soy-food",        "group": "legumes"},
+    "almond":           {"name": "Almond",              "query": "almond infant child nutrition",                     "icon_category": "almond",          "group": "legumes"},
+    "black_bean":       {"name": "Black Bean",          "query": "black bean infant child nutrition",                 "icon_category": "black-bean",      "group": "legumes"},
+    "cashew":           {"name": "Cashew",              "query": "cashew infant child nutrition",                     "icon_category": "cashew",          "group": "legumes"},
+    "walnut":           {"name": "Walnut",              "query": "walnut infant child nutrition",                     "icon_category": "walnut",          "group": "legumes"},
+    "sunflower_seeds":  {"name": "Sunflower Seeds",     "query": "sunflower seed infant child nutrition",             "icon_category": "sunflower-seeds", "group": "legumes"},
+    "pumpkin_seeds":    {"name": "Pumpkin Seeds",       "query": "pumpkin seed infant child nutrition",               "icon_category": "pumpkin-seeds",   "group": "legumes"},
+    "tahini":           {"name": "Tahini",              "query": "tahini sesame infant child nutrition",              "icon_category": "tahini",          "group": "legumes"},
 
-    # ── FATS & OILS (3) ──────────────────────────────────────────────────────
-    "olive_oil": {
-        "name": "Olive Oil",
-        "query": "olive oil infant child Mediterranean diet monounsaturated fat complementary",
-        "icon_category": "olive-oil",
-        "group": "fats",
-    },
-    "coconut_oil": {
-        "name": "Coconut Oil",
-        "query": "coconut oil infant child medium-chain triglyceride nutrition complementary",
-        "icon_category": "coconut-oil",
-        "group": "fats",
-    },
-    "flaxseed": {
-        "name": "Flaxseed",
-        "query": "flaxseed linseed infant child omega-3 ALA plant-based complementary nutrition",
-        "icon_category": "flaxseed",
-        "group": "fats",
-    },
+    # ── FATS & OILS ──────────────────────────────────────────────────────────
+    "olive_oil":        {"name": "Olive Oil",           "query": "olive oil infant child nutrition",                  "icon_category": "olive-oil",       "group": "fats"},
+    "coconut_oil":      {"name": "Coconut Oil",         "query": "coconut oil infant child nutrition",                "icon_category": "coconut-oil",     "group": "fats"},
+    "flaxseed":         {"name": "Flaxseed",            "query": "flaxseed linseed infant child nutrition",           "icon_category": "flaxseed",        "group": "fats"},
+    "chia_seed":        {"name": "Chia Seed",           "query": "chia seed infant child nutrition",                  "icon_category": "chia-seed",       "group": "fats"},
+    "ghee":             {"name": "Ghee",                "query": "ghee clarified butter infant child nutrition",      "icon_category": "ghee",            "group": "fats"},
+    "hemp_seed":        {"name": "Hemp Seed",           "query": "hemp seed infant child nutrition",                  "icon_category": "hemp-seed",       "group": "fats"},
 
-    # ── FUNCTIONAL / SPECIAL (4) ─────────────────────────────────────────────
-    "probiotic_food": {
-        "name": "Probiotic Foods",
-        "query": "probiotic fermented food infant kefir kimchi gut microbiome lactobacillus bifidobacterium",
-        "icon_category": "probiotic-food",
-        "group": "functional",
-    },
-    "prebiotic_food": {
-        "name": "Prebiotic Foods",
-        "query": "prebiotic fibre infant gut microbiome garlic onion banana oat inulin FOS",
-        "icon_category": "prebiotic-food",
-        "group": "functional",
-    },
-    "dark_chocolate": {
-        "name": "Dark Chocolate / Cocoa",
-        "query": "cocoa dark chocolate child flavonoid antioxidant cognitive iron complementary",
-        "icon_category": "dark-chocolate",
-        "group": "functional",
-    },
-    "herbs_spices": {
-        "name": "Herbs & Spices",
-        "query": "herbs spices infant toddler flavour learning turmeric ginger cinnamon introduction",
-        "icon_category": "herbs-spices",
-        "group": "functional",
-    },
+    # ── FUNCTIONAL ───────────────────────────────────────────────────────────
+    "probiotic_food":   {"name": "Probiotic Foods",     "query": "probiotic infant child nutrition",                  "icon_category": "probiotic-food",  "group": "functional"},
+    "prebiotic_food":   {"name": "Prebiotic Foods",     "query": "prebiotic infant child nutrition",                  "icon_category": "prebiotic-food",  "group": "functional"},
+    "dark_chocolate":   {"name": "Dark Chocolate / Cocoa", "query": "cocoa chocolate infant child nutrition",         "icon_category": "dark-chocolate",  "group": "functional"},
+    "herbs_spices":     {"name": "Herbs & Spices",      "query": "herbs spices infant child nutrition",               "icon_category": "herbs-spices",    "group": "functional"},
+    "turmeric":         {"name": "Turmeric",            "query": "turmeric curcumin infant child nutrition",          "icon_category": "turmeric",        "group": "functional"},
+    "ginger":           {"name": "Ginger",              "query": "ginger infant child nutrition",                     "icon_category": "ginger",          "group": "functional"},
+    "fortified_cereal": {"name": "Fortified Cereal",    "query": "fortified cereal infant child nutrition",           "icon_category": "fortified-cereal","group": "functional"},
+
+    # ── MEAT ─────────────────────────────────────────────────────────────────
+    "turkey":           {"name": "Turkey",              "query": "turkey infant child nutrition",                     "icon_category": "turkey-meat",     "group": "meat"},
+    "lamb":             {"name": "Lamb",                "query": "lamb infant child nutrition",                       "icon_category": "lamb-meat",       "group": "meat"},
+    "pork":             {"name": "Pork",                "query": "pork infant child nutrition",                       "icon_category": "pork-meat",       "group": "meat"},
+    "duck":             {"name": "Duck",                "query": "duck infant child nutrition",                       "icon_category": "duck-meat",       "group": "meat"},
+    "venison":          {"name": "Venison",             "query": "venison deer meat infant child nutrition",          "icon_category": "venison",         "group": "meat"},
+    "rabbit":           {"name": "Rabbit",              "query": "rabbit infant child nutrition",                     "icon_category": "rabbit-meat",     "group": "meat"},
+
+    # ── SWEETS ───────────────────────────────────────────────────────────────
+    "dates":            {"name": "Dates",               "query": "dates infant child nutrition",                      "icon_category": "dates-fruit",     "group": "sweets"},
+    "raisins":          {"name": "Raisins",             "query": "raisins dried grapes infant child nutrition",       "icon_category": "raisins",         "group": "sweets"},
+    "honey":            {"name": "Honey",               "query": "honey infant child nutrition",                      "icon_category": "honey",           "group": "sweets"},
+    "maple_syrup":      {"name": "Maple Syrup",         "query": "maple syrup infant child nutrition",                "icon_category": "maple-syrup",     "group": "sweets"},
+    "rice_cake":        {"name": "Rice Cake",           "query": "rice cake infant child nutrition",                  "icon_category": "rice-cake",       "group": "sweets"},
+    "fruit_puree":      {"name": "Fruit Puree / Pouch", "query": "fruit puree infant child nutrition",                "icon_category": "fruit-puree",     "group": "sweets"},
+
+    # ── DRINKS ───────────────────────────────────────────────────────────────
+    "water":            {"name": "Water",               "query": "water infant child nutrition",                      "icon_category": "water-drink",     "group": "drinks"},
+    "formula_milk":     {"name": "Formula Milk",        "query": "infant formula milk nutrition",                     "icon_category": "formula-milk",    "group": "drinks"},
+    "fruit_juice":      {"name": "Fruit Juice",         "query": "fruit juice infant child nutrition",                "icon_category": "fruit-juice",     "group": "drinks"},
+    "coconut_water":    {"name": "Coconut Water",       "query": "coconut water infant child nutrition",              "icon_category": "coconut-water",   "group": "drinks"},
+    "herbal_tea":       {"name": "Herbal Tea",          "query": "herbal tea infant child nutrition",                 "icon_category": "herbal-tea",      "group": "drinks"},
 }
 
 # Group ordering for layout
-FOOD_GROUP_ORDER = ["vegetables", "fruits", "proteins", "dairy", "grains", "legumes", "fats", "functional"]
+FOOD_GROUP_ORDER = [
+    "vegetables", "fruits", "meat", "proteins", "dairy",
+    "grains", "legumes", "fats", "functional", "sweets", "drinks",
+]
 
 
 # ── Database helpers ──────────────────────────────────────────────────────────
@@ -373,6 +210,91 @@ def _headers():
     return {"User-Agent": f"mapo-baby-food/1.0 (mailto:{EMAIL})"}
 
 
+def _params_with_email(params: dict) -> dict:
+    """OpenAlex routes requests with a real mailto to the high-rate polite pool."""
+    return {**params, "mailto": EMAIL}
+
+
+class BudgetExhaustedError(Exception):
+    """Raised when the OpenAlex daily credit budget is exhausted."""
+    def __init__(self, retry_after_secs):
+        self.retry_after_secs = retry_after_secs
+        hrs = retry_after_secs / 3600
+        super().__init__(
+            f"OpenAlex daily budget exhausted. Resets in {retry_after_secs}s "
+            f"({hrs:.1f}h). Run again after midnight UTC."
+        )
+
+
+def _parse_429(response):
+    """Extract (is_budget_exhausted, wait_seconds) from a 429 response."""
+    # Try JSON body first — OpenAlex budget errors carry retryAfter in the body
+    try:
+        body = response.json()
+        if "dailyRemainingUsd" in body or "creditsRemaining" in body:
+            # Budget exhaustion — retryAfter is seconds until midnight UTC
+            return True, int(body.get("retryAfter", 3600))
+        body_wait = body.get("retryAfter")
+        if body_wait:
+            return False, int(body_wait)
+    except Exception:
+        pass
+
+    # Fall back to Retry-After header
+    header = response.headers.get("Retry-After")
+    if header:
+        try:
+            value = int(header)
+            # Unix timestamps are > 1 billion; durations are not
+            if value > 1_000_000_000:
+                wait = max(1, value - int(time.time()))
+            else:
+                wait = value
+            return False, min(wait, 120)
+        except ValueError:
+            pass
+
+    return False, 0
+
+
+HARD_PAUSE_AFTER = 4   # switch to hard pause after this many fast retries
+HARD_PAUSE_SECS  = 180 # 3 minutes
+
+
+def _get_with_retry(url, params, max_retries=8, base_delay=5):
+    """GET with retries on 429/5xx.
+
+    Strategy:
+      attempts 1–4 : exponential back-off (5s, 10s, 20s, 40s)
+      attempts 5–8 : hard 3-minute pause each time
+    Budget exhaustion (daily credits gone) raises BudgetExhaustedError immediately.
+    """
+    for attempt in range(max_retries):
+        r = requests.get(url, params=_params_with_email(params), headers=_headers(), timeout=30)
+        if r.status_code == 429:
+            is_budget, wait_secs = _parse_429(r)
+            if is_budget:
+                raise BudgetExhaustedError(wait_secs)
+            if attempt < HARD_PAUSE_AFTER:
+                backoff = base_delay * (2 ** attempt)   # 5, 10, 20, 40s
+                wait = max(wait_secs, backoff)
+                print(f"\n  [rate-limit] 429 — waiting {wait}s (attempt {attempt + 1}/{max_retries})...")
+            else:
+                wait = HARD_PAUSE_SECS
+                print(f"\n  [rate-limit] 429 — hard pause {wait}s ({attempt + 1}/{max_retries})...")
+            time.sleep(wait)
+            continue
+        if r.status_code >= 500 and attempt < max_retries - 1:
+            wait = base_delay * (2 ** min(attempt, HARD_PAUSE_AFTER - 1))
+            print(f"\n  [server-error] {r.status_code} — waiting {wait}s...")
+            time.sleep(wait)
+            continue
+        r.raise_for_status()
+        return r
+    r.raise_for_status()
+    return r
+
+
 def fetch_food_count(food_key):
     cfg = PREDEFINED_FOODS[food_key]
     params = {
@@ -382,8 +304,7 @@ def fetch_food_count(food_key):
         "select": "id",
     }
     try:
-        r = requests.get(f"{OPENALEX_BASE}/works", params=params, headers=_headers(), timeout=30)
-        r.raise_for_status()
+        r = _get_with_retry(f"{OPENALEX_BASE}/works", params)
         return r.json().get("meta", {}).get("count", 0)
     except Exception as e:
         print(f"  [warn] count fetch failed for {food_key}: {e}")
@@ -405,7 +326,7 @@ def fetch_all_food_counts(out_path=None):
         count = fetch_food_count(key)
         counts[key] = count
         print(f"  [{i:3d}/{total}] {key:35s} {count:>8,d}")
-        time.sleep(0.15)
+        time.sleep(0.5)  # polite pool allows ~2 req/s; stay well under
 
     os.makedirs(os.path.dirname(out_path), exist_ok=True)
     with open(out_path, "w") as f:
@@ -427,8 +348,7 @@ def fetch_works(query, max_results=300):
     }
     fetched = []
     while len(fetched) < max_results:
-        r = requests.get(f"{OPENALEX_BASE}/works", params=params, headers=_headers(), timeout=30)
-        r.raise_for_status()
+        r = _get_with_retry(f"{OPENALEX_BASE}/works", params)
         data = r.json()
         results = data.get("results", [])
         if not results:
@@ -439,7 +359,7 @@ def fetch_works(query, max_results=300):
         if not cursor:
             break
         params["cursor"] = cursor
-        time.sleep(0.1)
+        time.sleep(0.5)  # stay within polite pool rate limit
     print(f"  Fetched {len(fetched)} papers total.   ")
     return fetched[:max_results]
 

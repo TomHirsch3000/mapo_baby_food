@@ -263,24 +263,47 @@ export class LayoutEngine {
     }
 
     applyFoodGalaxyLayout(nodes, sim) {
-        // Fix group-label hexagons at evenly-spaced positions around a ring,
-        // then pull food circles toward their group center.
-        const GROUP_ORDER = ['vegetables','fruits','proteins','dairy','grains','legumes','fats','functional'];
-        const radius = 380;
-        const groupCenters = {};
+        // Tessellating flat-top hexagon grid (3 columns: 4-3-4 = 11 groups).
+        // Flat-top hex adjacency: centers are hexR*sqrt(3) apart.
+        // Column step = 3*hexR/2, row step = hexR*sqrt(3), odd columns offset by hexR*sqrt(3)/2.
+        const hexR = 280;
+        const hexStep = hexR * 1.5;          // horizontal distance between column centers
+        const hexRowStep = hexR * Math.sqrt(3); // vertical distance between rows in same column
 
-        GROUP_ORDER.forEach((g, i) => {
-            const angle = (i / GROUP_ORDER.length) * 2 * Math.PI - Math.PI / 2;
-            groupCenters[g] = {
-                x: Math.cos(angle) * radius,
-                y: Math.sin(angle) * radius + this.graphCenterY,
-            };
+        // Groups assigned to a 3-column tessellating grid:
+        // Col A (4 rows), Col B (3 rows, offset), Col C (4 rows)
+        const GRID = [
+            { group: 'vegetables',  col: 0, row: 0 },
+            { group: 'fruits',      col: 0, row: 1 },
+            { group: 'meat',        col: 0, row: 2 },
+            { group: 'proteins',    col: 0, row: 3 },
+            { group: 'dairy',       col: 1, row: 0 },
+            { group: 'grains',      col: 1, row: 1 },
+            { group: 'legumes',     col: 1, row: 2 },
+            { group: 'fats',        col: 2, row: 0 },
+            { group: 'functional',  col: 2, row: 1 },
+            { group: 'sweets',      col: 2, row: 2 },
+            { group: 'drinks',      col: 2, row: 3 },
+        ];
+
+        // Col A at x=-hexStep, Col B at x=0, Col C at x=+hexStep.
+        // Standard centering: (row - (nRows-1)/2) * hexRowStep places rows symmetrically.
+        // This produces perfect tessellation: col B rows at -h,0,+h interleave with
+        // col A/C rows at -1.5h,-0.5h,+0.5h,+1.5h (each col B hex is distance hexR√3 from its 4 neighbors).
+        const colX = [-hexStep, 0, hexStep];
+        const rowCounts = [4, 3, 4];
+        const groupCenters = {};
+        GRID.forEach(({ group, col, row }) => {
+            const nRows = rowCounts[col];
+            const x = colX[col];
+            const y = (row - (nRows - 1) / 2) * hexRowStep + this.graphCenterY;
+            groupCenters[group] = { x, y };
         });
 
         nodes.forEach(n => {
             n.fx = null; n.fy = null;
             if (n.isMenuNode) {
-                n.x = 750; n.y = -600;
+                n.x = 1200; n.y = -900;
                 return;
             }
             if (n.isFoodGroupLabel) {
@@ -290,28 +313,54 @@ export class LayoutEngine {
                 return;
             }
             const c = groupCenters[n.group] || { x: 0, y: this.graphCenterY };
-            n.x = c.x + (Math.random() - 0.5) * 80;
-            n.y = c.y + (Math.random() - 0.5) * 80;
+            n.x = c.x + (Math.random() - 0.5) * 40;
+            n.y = c.y + (Math.random() - 0.5) * 40;
+        });
+
+        // Hard position clamp: runs every tick (unlike forces, unaffected by alpha decay).
+        // Uses the inscribed circle (apothem) of the hexagon as the containment boundary.
+        const apothem = hexR * Math.sqrt(3) / 2;
+        sim.on("tick.foodContain", () => {
+            nodes.forEach(n => {
+                if (n.isFoodGroupLabel || n.isMenuNode) return;
+                const c = groupCenters[n.group];
+                if (!c) return;
+                const dx = n.x - c.x;
+                const dy = n.y - c.y;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+                const nodeR = n.val * 1.5 + 12;
+                const limit = apothem - nodeR;
+                if (limit > 0 && dist > limit && dist > 0) {
+                    const scale = limit / dist;
+                    n.x = c.x + dx * scale;
+                    n.y = c.y + dy * scale;
+                    // Kill outward velocity component to prevent re-escape
+                    const dot = n.vx * dx + n.vy * dy;
+                    if (dot > 0) {
+                        n.vx -= (dx / dist) * dot / dist;
+                        n.vy -= (dy / dist) * dot / dist;
+                    }
+                }
+            });
         });
 
         sim.force("center", null)
             .force("x", d3.forceX(d => {
-                if (d.isMenuNode) return 750;
+                if (d.isMenuNode) return 1200;
                 return groupCenters[d.group]?.x ?? 0;
             }).strength(d => d.isFoodGroupLabel ? 0 : 0.6))
             .force("y", d3.forceY(d => {
-                if (d.isMenuNode) return -600;
+                if (d.isMenuNode) return -900;
                 return groupCenters[d.group]?.y ?? 0;
             }).strength(d => d.isFoodGroupLabel ? 0 : 0.6))
             .force("charge", d3.forceManyBody().strength(d => {
-                if (d.isFoodGroupLabel) return -600;
-                return -20 - (d.val * 2);
+                if (d.isFoodGroupLabel) return 0;
+                return -15 - (d.val * 1.0);
             }))
             .force("collide", d3.forceCollide().radius(d => {
-                if (d.isFoodGroupLabel) return 105;
-                // val range 8-60, visual r range 20-80 → collision = visual r + 12 gap
-                return d.val * 1.0 + 12;
-            }).iterations(4))
+                if (d.isFoodGroupLabel) return 0;
+                return d.val * 1.5 + 12;
+            }).iterations(8))
             .force("link", null);
 
         return sim;

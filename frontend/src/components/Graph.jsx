@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useMemo, useState } from 'react';
 import * as d3 from 'd3';
 import { roundedHexagonPath, getDeterministicPoint, hashString, EDGE_COLORS, getEdgeId, sanitizeId, generateHexPositions } from '../utils/d3-helpers';
 import { LayoutEngine } from '../modules/LayoutEngine';
-import { getIconPath, shouldShowIcon } from '../config/categoryIcons';
+import { getIconPath, getFallbackIconPath, shouldShowIcon } from '../config/categoryIcons';
 
 export const Graph = ({
     nodes,
@@ -100,10 +100,14 @@ export const Graph = ({
         let gAxisLayer = gMain.select(".g-axis-layer");
         if (gAxisLayer.empty()) gAxisLayer = gMain.append("g").attr("class", "g-axis-layer");
 
+        let gHexBg = gMain.select(".g-hex-bg");
+        if (gHexBg.empty()) gHexBg = gMain.append("g").attr("class", "g-hex-bg");
+
         let gNodes = gMain.select(".g-nodes");
         if (gNodes.empty()) gNodes = gMain.append("g").attr("class", "g-nodes");
 
         gAxisLayer.lower();
+        gHexBg.lower();
         gLinks.lower();
         gNodes.raise();
 
@@ -124,6 +128,7 @@ export const Graph = ({
         if (prevViewMode.current !== viewMode || prevLayoutMode.current !== layoutMode) {
             gLinks.selectAll("*").remove();
             gNodes.selectAll("*").interrupt().remove();
+            gHexBg.selectAll("*").remove();
             gNodes.style("opacity", 0);
             gLinks.style("opacity", 0);
         }
@@ -148,7 +153,7 @@ export const Graph = ({
             layoutEngine.current.applyFieldLayout(currentNodes, currentEdges, sim, selected, layoutMode, scales);
         }
 
-        const DRY_RUN_TICKS = isHome ? 0 : ((isGalaxy || isField) ? 300 : 120);
+        const DRY_RUN_TICKS = isHome ? 0 : (isFoodGalaxy ? 400 : (isGalaxy || isField) ? 300 : 120);
         sim.stop();
         sim.alpha(1);
         for (let i = 0; i < DRY_RUN_TICKS; ++i) {
@@ -293,7 +298,44 @@ export const Graph = ({
         allLinks.attr("stroke-width", d => (isGalaxy || isField) ? Math.max(2, Math.sqrt(d.weight || 1)) : 1)
             .attr("stroke-opacity", 0);
 
-        const nodeJoin = gNodes.selectAll(".d3-node").data(currentNodes, d => d.id);
+        // Food galaxy hexagon backgrounds are rendered as a static non-interactive layer
+        const foodNodes = isFoodGalaxy
+            ? currentNodes.filter(d => !d.isFoodGroupLabel && !d.isMenuNode)
+            : currentNodes;
+
+        if (isFoodGalaxy) {
+            const cScaleHex = scales.colorScale || d3.scaleOrdinal(d3.schemeTableau10);
+            const hexR = 280;
+            const hexGroups = currentNodes.filter(d => d.isFoodGroupLabel);
+            const hexBgJoin = gHexBg.selectAll(".hex-bg-cell").data(hexGroups, d => d.id);
+            hexBgJoin.exit().remove();
+            const hexBgEnter = hexBgJoin.enter().append("g").attr("class", "hex-bg-cell")
+                .style("pointer-events", "none");
+            hexBgEnter.append("path").attr("class", "hex-bg-shape");
+            hexBgEnter.append("text").attr("class", "hex-bg-label");
+            const hexBgAll = hexBgEnter.merge(hexBgJoin);
+            hexBgAll.attr("transform", d => `translate(${d.x ?? 0}, ${d.y ?? 0})`);
+            hexBgAll.select(".hex-bg-shape")
+                .attr("d", roundedHexagonPath(hexR))
+                .attr("fill", d => cScaleHex(d.group || 'Default'))
+                .attr("fill-opacity", 0.06)
+                .attr("stroke", d => cScaleHex(d.group || 'Default'))
+                .attr("stroke-width", 1.5)
+                .attr("stroke-opacity", 0.25);
+            hexBgAll.select(".hex-bg-label")
+                .attr("y", -hexR * 0.7)
+                .attr("text-anchor", "middle")
+                .style("font-family", "Inter, system-ui, sans-serif")
+                .style("font-size", "13px")
+                .style("font-weight", "700")
+                .style("fill", d => cScaleHex(d.group || 'Default'))
+                .style("fill-opacity", 0.85)
+                .style("letter-spacing", "0.1em")
+                .style("pointer-events", "none")
+                .text(d => d.name.toUpperCase());
+        }
+
+        const nodeJoin = gNodes.selectAll(".d3-node").data(foodNodes, d => d.id);
         nodeJoin.exit().remove();
 
         const nodeEnter = nodeJoin.enter().append("g")
@@ -311,13 +353,6 @@ export const Graph = ({
                 el.append("circle").attr("class", "home-node-core");
                 const fo = el.append("foreignObject").attr("class", "home-node-fo");
                 fo.append("xhtml:div").attr("class", "home-node-div");
-            } else if (isFoodGalaxy && d.isFoodGroupLabel) {
-                // Group anchor node — rendered as a hexagon (like universe nodes)
-                el.append("path").attr("class", "orbit");
-                el.append("path").attr("class", "core");
-                el.append("image").attr("class", "node-icon").style("pointer-events", "none").style("display", "none");
-                const fo = el.append("foreignObject").attr("class", "hex-label-fo");
-                fo.append("xhtml:div").attr("class", "hex-label-div");
             } else if (isFoodGalaxy && !d.isMenuNode) {
                 const clipId = `food-clip-${d.id}`;
                 el.append("defs").append("clipPath").attr("id", clipId)
@@ -436,43 +471,10 @@ export const Graph = ({
                 el.select(".label-sub").text("");
                 return;
             }
-            if (isFoodGalaxy && d.isFoodGroupLabel) {
-                // Hexagon group anchor — same rendering as UNIVERSE hexagons
-                const val = d.val || 38;
-                const hexR = val * 2.5;
-                const color = cScale(d.group || 'Default');
-                el.select(".orbit")
-                    .attr("d", roundedHexagonPath(hexR))
-                    .attr("fill", color).attr("fill-opacity", 0.15)
-                    .attr("stroke", "none").attr("stroke-width", 0);
-                el.select(".core")
-                    .attr("d", roundedHexagonPath(hexR * 0.78))
-                    .attr("fill", color).attr("fill-opacity", 0.35)
-                    .attr("stroke", "none").attr("stroke-width", 0);
-                const labelW = hexR * 2.2;
-                el.select(".hex-label-fo")
-                    .attr("x", -labelW / 2).attr("y", -hexR * 0.55)
-                    .attr("width", labelW).attr("height", hexR * 1.2)
-                    .style("overflow", "visible").style("pointer-events", "none");
-                el.select(".hex-label-div")
-                    .style("width", `${labelW}px`)
-                    .style("display", "flex").style("align-items", "center")
-                    .style("justify-content", "center").style("text-align", "center")
-                    .style("font-family", "Inter, system-ui, sans-serif")
-                    .style("font-size", `${Math.min(16, val * 0.32)}px`)
-                    .style("font-weight", "700").style("color", color)
-                    .style("text-transform", "uppercase").style("letter-spacing", "0.06em")
-                    .style("line-height", "1.2").style("pointer-events", "none")
-                    .text(d.name);
-                el.select(".label-main").text("");
-                el.select(".label-sub").text("");
-                return;
-            }
             if (isFoodGalaxy && !d.isMenuNode) {
-                const minR = 20, maxR = 80;
+                const minR = 12, maxR = 65;
                 const total = d.totalOpenAlexCount || d.totalWorksCount || 0;
-                // Log scale [1,4000] → [minR,maxR], consistent with val in useGraphData
-                const logFrac = total > 0 ? Math.min(Math.log10(Math.max(1, total)) / 3.6, 1) : 0;
+                const logFrac = total > 0 ? Math.min(Math.log10(Math.max(1, total)) / 4.7, 1) : 0;
                 const r = minR + (maxR - minR) * logFrac;
                 const color = cScale(d.group || 'Default');
 
@@ -495,7 +497,13 @@ export const Graph = ({
                         .attr("x", -r).attr("y", -r)
                         .attr("width", r * 2).attr("height", r * 2)
                         .attr("preserveAspectRatio", "xMidYMid slice")
-                        .style("display", null);
+                        .style("display", null)
+                        .on("error", function() {
+                            d3.select(this).style("display", "none").on("error", null);
+                            el.select(".food-ring")
+                                .attr("fill", color)
+                                .attr("fill-opacity", 0.3);
+                        });
                 } else {
                     el.select(".food-img").style("display", "none");
                 }

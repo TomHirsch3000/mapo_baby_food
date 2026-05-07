@@ -24,7 +24,27 @@ DATA_DIR = os.path.normpath(os.path.join(SCRIPT_DIR, '..', 'data'))
 OUT_DIR = os.path.normpath(os.path.join(SCRIPT_DIR, '..', 'frontend', 'public'))
 
 sys.path.insert(0, SCRIPT_DIR)
-from import_openalex import PREDEFINED_TOPICS
+from import_openalex import PREDEFINED_TOPICS, TOPIC_QUERIES, CLAIMS
+
+# Short display label for each claim — used as primaryField (group label in the UI)
+CLAIM_LABELS = {
+    "peanut_intro_4m_for":        "Introduce peanuts at 4 months",
+    "peanut_intro_4m_against":    "Avoid peanuts at 4 months",
+    "peanut_intro_6m_for":        "Introduce peanuts at 6 months",
+    "peanut_intro_6m_against":    "Delay beyond 6 months safer",
+    "peanut_intro_later_for":     "Later introduction acceptable",
+    "peanut_intro_later_against": "Late introduction increases risk",
+    "vitamin_d_supplement_for":   "Vitamin D supplement recommended",
+    "vitamin_d_sun_sufficient":   "Sun exposure sufficient",
+    "water_delay_for":            "No water under 6 months",
+    "water_after_6m_ok":          "Water safe from 6 months",
+    "cow_milk_12m_for":           "Cow milk not before 12 months",
+    "cow_milk_early_against":     "Early cow milk causes anaemia",
+}
+
+# Priority order for assigning a paper to a single claim when it matches multiple.
+# Earlier in list = higher priority.
+CLAIM_PRIORITY = list(CLAIM_LABELS.keys())
 
 # Derive icon map and group map from PREDEFINED_TOPICS so they stay in sync
 TOPIC_ICON_MAP = {k: v.get("food_type_hint", "general") for k, v in PREDEFINED_TOPICS.items()}
@@ -85,6 +105,9 @@ TOPIC_GROUP_MAP = {
     "global_malnutrition_infant": "socioeconomic", "baby_food_marketing": "socioeconomic",
     "baby_food_labelling": "socioeconomic", "socioeconomic_infant_diet": "socioeconomic",
     "sleep_feeding_infant": "socioeconomic", "screen_time_feeding": "socioeconomic",
+    # active curated topics
+    "water_infant": "feeding",
+    "cow_milk": "foods",
 }
 
 # Maps primary_field → galaxy group (fallback when AI enrichment has run)
@@ -200,6 +223,46 @@ def build_paper_node(row):
     }
 
 
+def load_claim_map(conn, topic_key):
+    """Return {paperId: best_claim_key} using keyword pre-pass (or LLM if available)."""
+    tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
+    if "claim_evaluations" not in tables:
+        return {}
+
+    # Gather all keyword matches for this topic's claims
+    topic_claims = {k for k in CLAIMS if CLAIMS[k]["topic"] == topic_key}
+    rows = conn.execute(
+        "SELECT paperId, claim_key, llm_stance, llm_confidence "
+        "FROM claim_evaluations WHERE keyword_match=1"
+    ).fetchall()
+
+    # Build paper → list of matched claim keys
+    paper_claims = {}
+    for r in rows:
+        if r["claim_key"] not in topic_claims:
+            continue
+        paper_claims.setdefault(r["paperId"], []).append({
+            "claim_key": r["claim_key"],
+            "llm_stance": r["llm_stance"],
+            "llm_confidence": r["llm_confidence"] or 0,
+        })
+
+    # For each paper, pick the single best claim:
+    # 1. Prefer LLM-confirmed stance (supports/contradicts) with highest confidence
+    # 2. Fall back to earliest position in CLAIM_PRIORITY
+    result = {}
+    for paper_id, matches in paper_claims.items():
+        llm_matches = [m for m in matches if m["llm_stance"] in ("supports", "contradicts")]
+        if llm_matches:
+            best = max(llm_matches, key=lambda m: m["llm_confidence"])
+        else:
+            # Pick whichever matched claim appears earliest in CLAIM_PRIORITY
+            priority_keys = [ck for ck in CLAIM_PRIORITY if ck in {m["claim_key"] for m in matches}]
+            best = {"claim_key": priority_keys[0]} if priority_keys else matches[0]
+        result[paper_id] = best["claim_key"]
+    return result
+
+
 def export_topic(topic_key, db_path, out_dir):
     conn = open_conn(db_path)
     try:
@@ -213,7 +276,17 @@ def export_topic(topic_key, db_path, out_dir):
             print(f"  [skip] {topic_key}: empty")
             return None
 
-        nodes = [build_paper_node(r) for r in rows]
+        claim_map = load_claim_map(conn, topic_key)
+
+        nodes = []
+        for r in rows:
+            node = build_paper_node(r)
+            claim_key = claim_map.get(r["paperId"])
+            if claim_key:
+                node["primaryField"] = CLAIM_LABELS.get(claim_key, claim_key)
+                node["claimKey"] = claim_key
+                node["claimDirection"] = CLAIMS[claim_key]["direction"]
+            nodes.append(node)
 
         edge_rows = []
         if "citations" in tables:
@@ -269,9 +342,12 @@ def make_stub_node(topic_key, topic_counts):
 
 def build_universe(data_dir, out_dir):
     topic_counts = load_topic_counts(data_dir)
-    dbs = sorted(glob.glob(os.path.join(data_dir, "papers_*.db")))
+    all_dbs = sorted(glob.glob(os.path.join(data_dir, "papers_*.db")))
 
-    print(f"[build] Found {len(dbs)} databases")
+    # Only process DBs whose key is an active topic in TOPIC_QUERIES
+    dbs = [p for p in all_dbs if topic_key_from_path(p) in TOPIC_QUERIES]
+
+    print(f"[build] Found {len(all_dbs)} databases, processing {len(dbs)} active topics")
     galaxy_nodes = []
     processed = set()
 

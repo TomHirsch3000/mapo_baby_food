@@ -275,12 +275,10 @@ export const useGraphData = (viewMode, activeGalaxy, groupingMode, yGroupingMode
         const sourceData = isFoodView ? foodUniverseData : universeData;
         if (!sourceData) return [];
 
-        // For food map: log scale over [1, 4000] papers → val range [8, 60]
-        // For recommendations: sqrt scale calibrated to topic data range (1–24,000 papers)
         const makeVal = isFoodView
             ? (total) => {
-                const logFrac = total > 0 ? Math.min(Math.log10(Math.max(1, total)) / 3.6, 1) : 0;
-                return 8 + 52 * logFrac;
+                const logFrac = total > 0 ? Math.min(Math.log10(Math.max(1, total)) / 4.7, 1) : 0;
+                return 6 + 44 * logFrac;
             }
             : (total) => Math.sqrt(Math.max(1, total)) * 0.387;
 
@@ -321,14 +319,17 @@ export const useGraphData = (viewMode, activeGalaxy, groupingMode, yGroupingMode
         // For Food Galaxy: add hexagonal group-label nodes (like mapo-food cuisine nodes)
         if (isFoodView) {
             const foodGroups = [
-                { id: 'vegetables', name: 'Vegetables', icon: 'group-vegetables' },
-                { id: 'fruits',     name: 'Fruits',     icon: 'group-fruits' },
-                { id: 'proteins',   name: 'Proteins',   icon: 'group-proteins' },
-                { id: 'dairy',      name: 'Dairy',      icon: 'group-dairy' },
-                { id: 'grains',     name: 'Grains',     icon: 'group-grains' },
+                { id: 'vegetables', name: 'Vegetables',   icon: 'group-vegetables' },
+                { id: 'fruits',     name: 'Fruits',       icon: 'group-fruits' },
+                { id: 'meat',       name: 'Meat',         icon: 'group-meat' },
+                { id: 'proteins',   name: 'Proteins',     icon: 'group-proteins' },
+                { id: 'dairy',      name: 'Dairy',        icon: 'group-dairy' },
+                { id: 'grains',     name: 'Grains',       icon: 'group-grains' },
                 { id: 'legumes',    name: 'Legumes & Nuts', icon: 'group-legumes' },
-                { id: 'fats',       name: 'Fats & Oils', icon: 'group-fats' },
-                { id: 'functional', name: 'Functional', icon: 'group-functional' },
+                { id: 'fats',       name: 'Fats & Oils',  icon: 'group-fats' },
+                { id: 'functional', name: 'Functional',   icon: 'group-functional' },
+                { id: 'sweets',     name: 'Sweets',       icon: 'group-sweets' },
+                { id: 'drinks',     name: 'Drinks',       icon: 'group-drinks' },
             ];
             foodGroups.forEach(g => {
                 galaxyNodes.push({
