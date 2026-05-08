@@ -121,17 +121,47 @@ TOPIC_QUERIES = {
         "food_type_hint": "vitamin-d",
         "age_hint": "0-12 months",
     },
-    "water_infant": {
-        "name": "Water for Infants",
-        "query": "water infant child",
-        "food_type_hint": "water-drink",
-        "age_hint": "0-12 months",
-    },
     "cow_milk": {
         "name": "Cow's Milk Introduction",
         "query": "cow milk infant child",
         "food_type_hint": "cow-milk",
         "age_hint": "12-24 months",
+    },
+    "yoghurt": {
+        "name": "Yoghurt Introduction",
+        "query": "yoghurt yogurt infant baby introduction",
+        "food_type_hint": "yoghurt",
+        "age_hint": "6-12 months",
+    },
+    "weaning": {
+        "name": "Weaning & Complementary Feeding",
+        "query": "weaning complementary feeding infant solid food introduction",
+        "food_type_hint": "solid-food",
+        "age_hint": "4-6 months",
+    },
+    "honey": {
+        "name": "Honey Safety",
+        "query": "honey infant botulism child safety",
+        "food_type_hint": "honey",
+        "age_hint": "0-12 months",
+    },
+    "salt_sugar": {
+        "name": "Salt & Sugar in Baby Food",
+        "query": "salt sugar sodium infant baby food intake",
+        "food_type_hint": "salt-sugar",
+        "age_hint": "0-24 months",
+    },
+    "egg_introduction": {
+        "name": "Egg Introduction",
+        "query": "egg allergy infant introduction prevention",
+        "food_type_hint": "eggs",
+        "age_hint": "4-6 months",
+    },
+    "iron_foods": {
+        "name": "Iron-Rich Foods for Infants",
+        "query": "iron deficiency infant complementary food fortification",
+        "food_type_hint": "iron-rich",
+        "age_hint": "6-12 months",
     },
 }
 
@@ -223,26 +253,6 @@ CLAIMS = {
         ],
     },
 
-    # ── Water ─────────────────────────────────────────────────────────────────
-    "water_delay_for": {
-        "topic": "water_infant",
-        "claim": "Plain water should not be given to infants under 6 months as it can be harmful",
-        "direction": "for",
-        "keyword_hints": [
-            "under 6", "before 6", "6 months", "hyponatremia",
-            "water intoxication", "avoid", "not recommended", "exclusive breastfeeding",
-        ],
-    },
-    "water_after_6m_ok": {
-        "topic": "water_infant",
-        "claim": "Small amounts of water can be safely introduced from 6 months alongside complementary foods",
-        "direction": "for",
-        "keyword_hints": [
-            "6 months", "complementary feeding", "safe", "small amount",
-            "sips", "cups", "solid food", "weaning",
-        ],
-    },
-
     # ── Cow's milk ────────────────────────────────────────────────────────────
     "cow_milk_12m_for": {
         "topic": "cow_milk",
@@ -260,6 +270,181 @@ CLAIMS = {
         "keyword_hints": [
             "iron deficiency", "anaemia", "anemia", "before 12",
             "early introduction", "under 12 months", "gut bleeding",
+        ],
+    },
+
+    # ── Yoghurt ──────────────────────────────────────────────────────────────
+    "yoghurt_6m_for": {
+        "topic": "yoghurt",
+        "claim": "Plain whole-milk yoghurt can be safely introduced from around 6 months of age",
+        "direction": "for",
+        "keyword_hints": [
+            "yoghurt", "yogurt", "6 month", "complementary",
+            "dairy", "introduction", "safe", "fermented",
+        ],
+    },
+    "yoghurt_6m_against": {
+        "topic": "yoghurt",
+        "claim": "Yoghurt should be delayed beyond 6 months due to dairy protein sensitivity concerns",
+        "direction": "against",
+        "keyword_hints": [
+            "yoghurt", "yogurt", "delay", "allergy", "dairy protein",
+            "sensitivity", "intolerance", "not recommended",
+        ],
+    },
+    "yoghurt_probiotic_for": {
+        "topic": "yoghurt",
+        "claim": "Probiotic-containing yoghurt provides gut health benefits for infants",
+        "direction": "for",
+        "keyword_hints": [
+            "probiotic", "yoghurt", "yogurt", "gut health", "microbiome",
+            "lactobacillus", "bifidobacterium", "fermented milk",
+        ],
+    },
+
+    # ── Weaning ──────────────────────────────────────────────────────────────
+    "weaning_6m_for": {
+        "topic": "weaning",
+        "claim": "Complementary foods should be introduced at around 6 months of age",
+        "direction": "for",
+        "keyword_hints": [
+            "6 month", "six month", "WHO", "complementary feeding",
+            "solid food", "weaning", "introduction", "readiness",
+        ],
+    },
+    "weaning_4m_for": {
+        "topic": "weaning",
+        "claim": "Introducing complementary foods between 4 and 6 months may be beneficial for some infants",
+        "direction": "for",
+        "keyword_hints": [
+            "4 month", "four month", "4-6 month", "early weaning",
+            "developmental readiness", "earlier introduction",
+        ],
+    },
+    "weaning_blw_for": {
+        "topic": "weaning",
+        "claim": "Baby-led weaning is a safe and effective approach to introducing solid foods",
+        "direction": "for",
+        "keyword_hints": [
+            "baby-led", "baby led weaning", "BLW", "self-feeding",
+            "finger food", "autonomy", "responsive feeding",
+        ],
+    },
+    "weaning_blw_against": {
+        "topic": "weaning",
+        "claim": "Baby-led weaning may increase choking risk or lead to inadequate nutrient intake",
+        "direction": "against",
+        "keyword_hints": [
+            "baby-led", "baby led weaning", "BLW", "choking",
+            "gagging", "inadequate intake", "iron deficiency", "energy intake",
+        ],
+    },
+
+    # ── Honey ────────────────────────────────────────────────────────────────
+    "honey_avoid_12m_for": {
+        "topic": "honey",
+        "claim": "Honey must not be given to infants under 12 months due to infant botulism risk",
+        "direction": "for",
+        "keyword_hints": [
+            "honey", "botulism", "clostridium botulinum", "under 12",
+            "under 1 year", "avoid", "infant botulism", "spores",
+        ],
+    },
+    "honey_after_12m_safe": {
+        "topic": "honey",
+        "claim": "Honey is safe to introduce after 12 months of age when the gut is mature enough",
+        "direction": "for",
+        "keyword_hints": [
+            "honey", "after 12", "over 1 year", "safe", "gut maturity",
+            "toddler", "older infant",
+        ],
+    },
+
+    # ── Salt & Sugar ─────────────────────────────────────────────────────────
+    "salt_avoid_for": {
+        "topic": "salt_sugar",
+        "claim": "Added salt should be avoided in food for infants under 12 months as their kidneys cannot process excess sodium",
+        "direction": "for",
+        "keyword_hints": [
+            "salt", "sodium", "kidney", "renal", "avoid",
+            "under 12 months", "no added salt", "infant food",
+        ],
+    },
+    "sugar_avoid_for": {
+        "topic": "salt_sugar",
+        "claim": "Added sugars should be avoided in infant and toddler food to prevent obesity and dental caries",
+        "direction": "for",
+        "keyword_hints": [
+            "sugar", "added sugar", "free sugar", "dental caries",
+            "obesity", "tooth decay", "sweet", "infant food",
+        ],
+    },
+    "sugar_fruit_ok": {
+        "topic": "salt_sugar",
+        "claim": "Natural sugars from whole fruits are acceptable and nutritious for infants from 6 months",
+        "direction": "for",
+        "keyword_hints": [
+            "fruit", "natural sugar", "whole fruit", "puree",
+            "complementary food", "acceptable", "nutritious",
+        ],
+    },
+
+    # ── Egg introduction ─────────────────────────────────────────────────────
+    "egg_early_for": {
+        "topic": "egg_introduction",
+        "claim": "Early egg introduction from around 4-6 months reduces the risk of egg allergy",
+        "direction": "for",
+        "keyword_hints": [
+            "egg", "early introduction", "4 month", "6 month",
+            "allergy prevention", "tolerance", "PETIT", "HEAP",
+            "BEAT", "STEP", "EAT",
+        ],
+    },
+    "egg_early_against": {
+        "topic": "egg_introduction",
+        "claim": "Early egg introduction may trigger allergic reactions in sensitised infants",
+        "direction": "against",
+        "keyword_hints": [
+            "egg", "allergic reaction", "sensitised", "sensitized",
+            "eczema", "IgE", "skin prick", "risk factor",
+        ],
+    },
+    "egg_cooked_vs_raw": {
+        "topic": "egg_introduction",
+        "claim": "Well-cooked egg is safer for first introduction than raw or lightly cooked egg",
+        "direction": "for",
+        "keyword_hints": [
+            "cooked egg", "baked egg", "heated egg", "raw egg",
+            "ovomucoid", "ovalbumin", "cooking", "heat treatment",
+        ],
+    },
+
+    # ── Iron-rich foods ──────────────────────────────────────────────────────
+    "iron_6m_for": {
+        "topic": "iron_foods",
+        "claim": "Iron-rich complementary foods should be prioritised from 6 months as breastmilk iron stores deplete",
+        "direction": "for",
+        "keyword_hints": [
+            "iron", "iron-rich", "complementary food", "6 month",
+            "iron stores", "depletion", "meat", "fortified cereal",
+        ],
+    },
+    "iron_meat_for": {
+        "topic": "iron_foods",
+        "claim": "Red meat is the most bioavailable source of iron for infants starting solids",
+        "direction": "for",
+        "keyword_hints": [
+            "red meat", "heme iron", "bioavailable", "beef",
+            "lamb", "absorption", "complementary", "first food",
+        ],
+    },
+    "iron_fortified_for": {
+        "topic": "iron_foods",
+        "claim": "Iron-fortified cereals are an effective way to meet infant iron requirements",
+        "direction": "for",
+        "keyword_hints": [
+            "fortified cereal", "iron-fortified", "infant cereal",
+            "rice cereal", "iron requirement", "supplementation",
         ],
     },
 }

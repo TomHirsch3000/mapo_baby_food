@@ -7,8 +7,8 @@
       "name": "Cow's Milk Introduction",
       "group": "foods",
       "primaryField": "cow-milk",
-      "totalWorksCount": 200,
-      "totalCitations": 42446,
+      "totalWorksCount": 202,
+      "totalCitations": 43560,
       "iconCategory": "cow-milk",
       "hasPapers": true,
       "nodesFile": "data/cow_milk/nodes.json",
@@ -28,7 +28,7 @@
         },
         {
           "decade": 1970,
-          "works_count": 10
+          "works_count": 11
         },
         {
           "decade": 1980,
@@ -44,7 +44,7 @@
         },
         {
           "decade": 2010,
-          "works_count": 69
+          "works_count": 70
         },
         {
           "decade": 2020,
@@ -55,15 +55,132 @@
         1926,
         2024
       ],
-      "totalOpenAlexCount": 8861
+      "totalOpenAlexCount": 8865
+    },
+    {
+      "id": "egg_introduction",
+      "name": "Egg Introduction",
+      "group": "general",
+      "primaryField": "eggs",
+      "totalWorksCount": 200,
+      "totalCitations": 39264,
+      "iconCategory": "eggs",
+      "hasPapers": true,
+      "nodesFile": "data/egg_introduction/nodes.json",
+      "edgesFile": "data/egg_introduction/edges.json",
+      "worksByDecade": [
+        {
+          "decade": 1930,
+          "works_count": 1
+        },
+        {
+          "decade": 1980,
+          "works_count": 4
+        },
+        {
+          "decade": 1990,
+          "works_count": 4
+        },
+        {
+          "decade": 2000,
+          "works_count": 19
+        },
+        {
+          "decade": 2010,
+          "works_count": 122
+        },
+        {
+          "decade": 2020,
+          "works_count": 50
+        }
+      ],
+      "yearRange": [
+        1934,
+        2026
+      ],
+      "totalOpenAlexCount": 2430
+    },
+    {
+      "id": "honey",
+      "name": "Honey Safety",
+      "group": "general",
+      "primaryField": "honey",
+      "totalWorksCount": 89,
+      "totalCitations": 1675,
+      "iconCategory": "honey",
+      "hasPapers": true,
+      "nodesFile": "data/honey/nodes.json",
+      "edgesFile": "data/honey/edges.json",
+      "worksByDecade": [
+        {
+          "decade": 1990,
+          "works_count": 1
+        },
+        {
+          "decade": 2000,
+          "works_count": 8
+        },
+        {
+          "decade": 2010,
+          "works_count": 20
+        },
+        {
+          "decade": 2020,
+          "works_count": 60
+        }
+      ],
+      "yearRange": [
+        1998,
+        2026
+      ],
+      "totalOpenAlexCount": 89
+    },
+    {
+      "id": "iron_foods",
+      "name": "Iron-Rich Foods for Infants",
+      "group": "general",
+      "primaryField": "iron-rich",
+      "totalWorksCount": 200,
+      "totalCitations": 21424,
+      "iconCategory": "iron-rich",
+      "hasPapers": true,
+      "nodesFile": "data/iron_foods/nodes.json",
+      "edgesFile": "data/iron_foods/edges.json",
+      "worksByDecade": [
+        {
+          "decade": 1970,
+          "works_count": 1
+        },
+        {
+          "decade": 1990,
+          "works_count": 3
+        },
+        {
+          "decade": 2000,
+          "works_count": 40
+        },
+        {
+          "decade": 2010,
+          "works_count": 133
+        },
+        {
+          "decade": 2020,
+          "works_count": 23
+        }
+      ],
+      "yearRange": [
+        1970,
+        2025
+      ],
+      "totalOpenAlexCount": 2036
     },
     {
       "id": "peanut_allergy",
       "name": "Peanut Allergy",
       "group": "allergens",
       "primaryField": "peanuts",
-      "totalWorksCount": 200,
-      "totalCitations": 31898,
+      "totalWorksCount": 201,
+      "totalCitations": 32802,
       "iconCategory": "peanuts",
       "hasPapers": true,
       "nodesFile": "data/peanut_allergy/nodes.json",
@@ -83,7 +200,7 @@
         },
         {
           "decade": 2010,
-          "works_count": 112
+          "works_count": 113
         },
         {
           "decade": 2020,
@@ -94,15 +211,66 @@
         1980,
         2026
       ],
-      "totalOpenAlexCount": 2104
+      "totalOpenAlexCount": 2107
+    },
+    {
+      "id": "salt_sugar",
+      "name": "Salt & Sugar in Baby Food",
+      "group": "general",
+      "primaryField": "salt-sugar",
+      "totalWorksCount": 200,
+      "totalCitations": 20763,
+      "iconCategory": "salt-sugar",
+      "hasPapers": true,
+      "nodesFile": "data/salt_sugar/nodes.json",
+      "edgesFile": "data/salt_sugar/edges.json",
+      "worksByDecade": [
+        {
+          "decade": 1940,
+          "works_count": 1
+        },
+        {
+          "decade": 1950,
+          "works_count": 3
+        },
+        {
+          "decade": 1960,
+          "works_count": 2
+        },
+        {
+          "decade": 1970,
+          "works_count": 4
+        },
+        {
+          "decade": 1990,
+          "works_count": 6
+        },
+        {
+          "decade": 2000,
+          "works_count": 17
+        },
+        {
+          "decade": 2010,
+          "works_count": 94
+        },
+        {
+          "decade": 2020,
+          "works_count": 73
+        }
+      ],
+      "yearRange": [
+        1940,
+        2025
+      ],
+      "totalOpenAlexCount": 1240
     },
     {
       "id": "vitamin_d",
       "name": "Vitamin D",
       "group": "nutrition",
       "primaryField": "vitamin-d",
-      "totalWorksCount": 390,
-      "totalCitations": 142011,
+      "totalWorksCount": 391,
+      "totalCitations": 142730,
       "iconCategory": "vitamin-d",
       "hasPapers": true,
       "nodesFile": "data/vitamin_d/nodes.json",
@@ -142,7 +310,7 @@
         },
         {
           "decade": 2010,
-          "works_count": 225
+          "works_count": 226
         },
         {
           "decade": 2020,
@@ -153,50 +321,81 @@
         1926,
         2026
       ],
-      "totalOpenAlexCount": 48456
+      "totalOpenAlexCount": 48485
     },
     {
-      "id": "water_infant",
-      "name": "Water for Infants",
-      "group": "feeding",
-      "primaryField": "water-drink",
+      "id": "weaning",
+      "name": "Weaning & Complementary Feeding",
+      "group": "general",
+      "primaryField": "solid-food",
       "totalWorksCount": 200,
-      "totalCitations": 37338,
-      "iconCategory": "water-drink",
+      "totalCitations": 26441,
+      "iconCategory": "solid-food",
       "hasPapers": true,
-      "nodesFile": "data/water_infant/nodes.json",
-      "edgesFile": "data/water_infant/edges.json",
+      "nodesFile": "data/weaning/nodes.json",
+      "edgesFile": "data/weaning/edges.json",
       "worksByDecade": [
         {
-          "decade": 1950,
-          "works_count": 2
-        },
-        {
           "decade": 1980,
-          "works_count": 9
+          "works_count": 1
         },
         {
           "decade": 1990,
-          "works_count": 24
+          "works_count": 8
         },
         {
           "decade": 2000,
-          "works_count": 49
+          "works_count": 38
         },
         {
           "decade": 2010,
-          "works_count": 101
+          "works_count": 125
         },
         {
           "decade": 2020,
-          "works_count": 15
+          "works_count": 28
         }
       ],
       "yearRange": [
-        1953,
-        2025
+        1984,
+        2024
       ],
-      "totalOpenAlexCount": 110658
+      "totalOpenAlexCount": 2128
+    },
+    {
+      "id": "yoghurt",
+      "name": "Yoghurt Introduction",
+      "group": "general",
+      "primaryField": "yoghurt",
+      "totalWorksCount": 114,
+      "totalCitations": 1291,
+      "iconCategory": "yoghurt",
+      "hasPapers": true,
+      "nodesFile": "data/yoghurt/nodes.json",
+      "edgesFile": "data/yoghurt/edges.json",
+      "worksByDecade": [
+        {
+          "decade": 1980,
+          "works_count": 1
+        },
+        {
+          "decade": 2000,
+          "works_count": 11
+        },
+        {
+          "decade": 2010,
+          "works_count": 32
+        },
+        {
+          "decade": 2020,
+          "works_count": 70
+        }
+      ],
+      "yearRange": [
+        1984,
+        2026
+      ],
+      "totalOpenAlexCount": 114
     }
   ]
 }

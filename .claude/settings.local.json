@@ -29,7 +29,8 @@
       "Bash(python -c \"import sqlite3; c=sqlite3.connect\\('data/papers_water_infant.db'\\); print\\('water_infant papers:', c.execute\\('SELECT COUNT\\(*\\) FROM papers'\\).fetchone\\(\\)[0]\\); c.close\\(\\)\")",
       "Bash(python -c \"import sqlite3; c=sqlite3.connect\\('data/papers_cow_milk.db'\\); print\\('cow_milk papers:', c.execute\\('SELECT COUNT\\(*\\) FROM papers'\\).fetchone\\(\\)[0]\\); c.close\\(\\)\")",
       "Bash(python -c \"import json; u=json.load\\(open\\('frontend/public/universe.json'\\)\\); print\\('Galaxy nodes:', len\\(u.get\\('nodes', u.get\\('topics', []\\)\\)\\)\\); print\\('Keys:', list\\(u.keys\\(\\)\\)[:5]\\)\")",
-      "Bash(python build_data.py)"
+      "Bash(python build_data.py)",
+      "Bash(python -c \"import backend.import_openalex as m; print\\(f'Topics: {len\\(m.TOPIC_QUERIES\\)}'\\); print\\(f'Claims: {len\\(m.CLAIMS\\)}'\\); print\\(\\); [print\\(f'  {k}: {v[\\\\\"name\\\\\"]}'\\) for k,v in m.TOPIC_QUERIES.items\\(\\)]; print\\(\\); [print\\(f'  {k} -> {v[\\\\\"topic\\\\\"]}'\\) for k,v in m.CLAIMS.items\\(\\)]\")"
     ]
   }
 }
