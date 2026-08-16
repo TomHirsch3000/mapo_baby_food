@@ -1,6 +1,10 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 
-export const SearchBar = ({ onSearch, currentQuery, paperIndex = [], onAutocompleteSelect }) => {
+/**
+ * Claim finder. Filters the flat claim index client-side and jumps straight to
+ * the selected claim's evidence view — there is no server-side search.
+ */
+export const SearchBar = ({ claimIndex = [], onClaimSelect }) => {
     const [value, setValue] = useState('');
     const [suggestions, setSuggestions] = useState([]);
     const [highlightIndex, setHighlightIndex] = useState(-1);
@@ -15,25 +19,25 @@ export const SearchBar = ({ onSearch, currentQuery, paperIndex = [], onAutocompl
         setHighlightIndex(-1);
 
         clearTimeout(debounceRef.current);
-        if (!q.trim() || paperIndex.length === 0) {
+        if (!q.trim() || claimIndex.length === 0) {
             setSuggestions([]);
             setShowDropdown(false);
             return;
         }
 
         debounceRef.current = setTimeout(() => {
-            const lower = q.toLowerCase();
-            const matches = [];
-            for (const paper of paperIndex) {
-                if (paper.title && paper.title.toLowerCase().includes(lower)) {
-                    matches.push(paper);
-                    if (matches.length >= 8) break;
-                }
-            }
+            // Every term must appear somewhere in the claim, its topic or its
+            // group, so "sleep peanut" matches nothing and "early peanut" does.
+            const terms = q.toLowerCase().split(/\s+/).filter(Boolean);
+            const matches = claimIndex.filter(c => {
+                const haystack =
+                    `${c.title} ${c.topicName} ${c.group}`.toLowerCase();
+                return terms.every(t => haystack.includes(t));
+            }).slice(0, 8);
             setSuggestions(matches);
             setShowDropdown(matches.length > 0);
-        }, 200);
-    }, [paperIndex]);
+        }, 150);
+    }, [claimIndex]);
 
     useEffect(() => {
         const handleMouseDown = (e) => {
@@ -45,26 +49,18 @@ export const SearchBar = ({ onSearch, currentQuery, paperIndex = [], onAutocompl
         return () => document.removeEventListener('mousedown', handleMouseDown);
     }, []);
 
-    const handleSelect = (paper) => {
+    const handleSelect = (claim) => {
         setValue('');
         setSuggestions([]);
         setShowDropdown(false);
         setHighlightIndex(-1);
-        if (onAutocompleteSelect) onAutocompleteSelect(paper);
+        if (onClaimSelect) onClaimSelect(claim);
     };
 
     const handleSubmit = (e) => {
         e.preventDefault();
-        if (highlightIndex >= 0 && suggestions[highlightIndex]) {
-            handleSelect(suggestions[highlightIndex]);
-            return;
-        }
-        const trimmed = value.trim();
-        if (trimmed) {
-            setSuggestions([]);
-            setShowDropdown(false);
-            onSearch(trimmed);
-        }
+        const pick = highlightIndex >= 0 ? suggestions[highlightIndex] : suggestions[0];
+        if (pick) handleSelect(pick);
     };
 
     const handleKeyDown = (e) => {
@@ -82,12 +78,13 @@ export const SearchBar = ({ onSearch, currentQuery, paperIndex = [], onAutocompl
         }
     };
 
-    const truncate = (str, len) => str && str.length > len ? str.slice(0, len) + '…' : str;
+    const truncate = (str, len) => (str && str.length > len ? `${str.slice(0, len)}…` : str);
 
     return (
         <form className="search-bar" onSubmit={handleSubmit} role="search">
             <div className="search-bar-inner" ref={wrapperRef}>
-                <svg className="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <svg className="search-icon" viewBox="0 0 24 24" fill="none"
+                     stroke="currentColor" strokeWidth="2">
                     <circle cx="11" cy="11" r="8" />
                     <line x1="21" y1="21" x2="16.65" y2="16.65" />
                 </svg>
@@ -99,12 +96,17 @@ export const SearchBar = ({ onSearch, currentQuery, paperIndex = [], onAutocompl
                     onChange={handleInputChange}
                     onKeyDown={handleKeyDown}
                     onFocus={() => { if (suggestions.length > 0) setShowDropdown(true); }}
-                    placeholder="Search, e.g. peanut allergy…"
-                    aria-label="Search papers"
+                    placeholder="Find a claim, e.g. peanut…"
+                    aria-label="Find a claim"
                     autoComplete="off"
                 />
                 {value && (
-                    <button type="button" className="search-clear-btn" onClick={() => { setValue(''); setSuggestions([]); setShowDropdown(false); }} aria-label="Clear search">
+                    <button
+                        type="button"
+                        className="search-clear-btn"
+                        onClick={() => { setValue(''); setSuggestions([]); setShowDropdown(false); }}
+                        aria-label="Clear search"
+                    >
                         ✕
                     </button>
                 )}
@@ -119,14 +121,15 @@ export const SearchBar = ({ onSearch, currentQuery, paperIndex = [], onAutocompl
                                 role="option"
                                 aria-selected={i === highlightIndex}
                             >
-                                <span className="autocomplete-title">{truncate(s.title, 80)}</span>
-                                <span className="autocomplete-galaxy">{s.galaxyName}</span>
+                                <span className="autocomplete-title">{truncate(s.title, 84)}</span>
+                                <span className="autocomplete-galaxy">
+                                    {s.topicName}{s.hasEvidence ? '' : ' · no evidence yet'}
+                                </span>
                             </li>
                         ))}
                     </ul>
                 )}
             </div>
-            <button type="submit" className="search-submit-btn">Search</button>
         </form>
     );
 };

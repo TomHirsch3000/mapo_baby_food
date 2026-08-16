@@ -1,5 +1,4 @@
 import * as d3 from "d3";
-import { getDeterministicPoint, hashString } from "../utils/d3-helpers";
 
 export class LayoutEngine {
     constructor(width, height) {
@@ -14,360 +13,189 @@ export class LayoutEngine {
         this.graphCenterY = -height * 0.1;
     }
 
-    // --- Universe View Layouts ---
+    // --- Topics (landing) Layout ---
+    //
+    // Flat-top hexagons on a true hex grid: one in the centre, four on the
+    // diagonal neighbour cells, so all five edges meet exactly.
+    //
+    // Tessellation forces a uniform hexagon size, so on this screen node size
+    // no longer encodes paper count - the count is in the label instead. Size
+    // still encodes literature volume on the claims screen, where the range is
+    // three orders of magnitude and actually worth seeing.
 
-    applyUniverseCentralLayout(nodes, sim) {
-        const groups = [...new Set(nodes.map(n => n.group || n.data?.group || "Default"))];
-        const groupCenters = {};
-        const radius = 450;
-        groups.forEach((g, i) => {
-            const angle = (i / groups.length) * 2 * Math.PI;
-            groupCenters[g] = {
-                x: Math.cos(angle) * radius,
-                y: Math.sin(angle) * radius + this.graphCenterY
-            };
-        });
+    static TOPIC_HEX_R = 190;
 
-        nodes.forEach(n => {
-            n.fx = null;
-            n.fy = null;
-            if (n.isMenuNode) {
-                n.x = 800; n.y = -600;
-            } else {
-                const group = n.group || 'Default';
-                const target = groupCenters[group] || { x: 0, y: this.graphCenterY };
-                n.x = target.x + (Math.random() - 0.5) * 60;
-                n.y = target.y + (Math.random() - 0.5) * 60;
-            }
-        });
-
-        sim.force("center", null)
-            .force("x", d3.forceX(d => {
-                if (d.isMenuNode) return 800;
-                return groupCenters[d.group || 'Default']?.x ?? 0;
-            }).strength(0.5))
-            .force("y", d3.forceY(d => {
-                if (d.isMenuNode) return -600;
-                return groupCenters[d.group || 'Default']?.y ?? 0;
-            }).strength(0.5))
-            .force("charge", d3.forceManyBody().strength(d => -30 - (d.val * 1.5)))
-            .force("collide", d3.forceCollide().radius(d => (d.val * 2.5 + 15)).iterations(5))
-            .force("globalCenter", null)
-            .force("link", null);
-
-        return sim;
-    }
-
-    applyUniverseTimelineLayout(nodes, sim, universeXScale, timelineHeightScale) {
-        const sortedForLayout = [...nodes]
-            .filter(n => !n.isMenuNode)
-            .sort((a, b) => {
-                const yearDiff = (a.data.firstPublicationYear || 0) - (b.data.firstPublicationYear || 0);
-                if (yearDiff !== 0) return yearDiff;
-                return a.id.localeCompare(b.id);
-            });
-
-        let totalHeight = 0;
-        const nodeHeights = new Map();
-
-        sortedForLayout.forEach(n => {
-            let dynamicSize = 0;
-            if (timelineHeightScale && n.data && n.data.worksByDecade) {
-                const projectedData = n.data.worksByDecade.map(w =>
-                    w.decade === 2020 ? { ...w, works_count: w.works_count * 2.0 } : w
-                );
-                const maxWorks = d3.max(projectedData, w => w.works_count) || 0;
-                dynamicSize = timelineHeightScale(maxWorks);
-            }
-            if (!dynamicSize) dynamicSize = 10;
-            const slotH = 35 + dynamicSize;
-            nodeHeights.set(n.id, slotH);
-            n._height = slotH;
-            totalHeight += slotH;
-        });
-
-        const bottomY = (this.height / 2) - 75;
-        let currentY = bottomY - totalHeight;
-
-        sortedForLayout.forEach((n) => {
-            n.fx = 0;
-            const h = nodeHeights.get(n.id);
-            n.fy = currentY + (h / 2);
-            currentY += h;
-            if (n.x === undefined || n.y === undefined) { n.x = n.fx; n.y = n.fy; }
-            n.vx = 0; n.vy = 0;
-        });
-
-        const menuNode = nodes.find(n => n.isMenuNode);
-        if (menuNode) {
-            menuNode.fx = 800; menuNode.fy = -600;
-            if (menuNode.x === undefined) { menuNode.x = 800; menuNode.y = -600; }
-        }
-
-        sim.force("center", null).force("link", null).force("charge", null).force("collide", null)
-            .force("x", d3.forceX(0).strength(1))
-            .force("y", d3.forceY(d => d.fy).strength(1));
-
-        return sim;
-    }
-
-    // --- Galaxy View Layouts ---
-
-    applyGalaxyLayout(nodes, edges, sim, layoutMode, scales) {
-        if (layoutMode === 'TIMELINE') {
-            const minYear = d3.min(nodes, d => d.minYear) || 1990;
-            const maxYear = d3.max(nodes, d => d.maxYear || d.minYear) || 2025;
-            const paddingX = this.width * 0.05;
-            const effectiveWidth = this.width - (paddingX * 2);
-            const xScale = d3.scaleLinear().domain([minYear, maxYear]).range([-effectiveWidth / 2, effectiveWidth / 2]);
-
-            const sorted = [...nodes].sort((a, b) => {
-                const startA = a.minYear || d3.min(nodes, n => n.minYear);
-                const startB = b.minYear || d3.min(nodes, n => n.minYear);
-                if (startA !== startB) return startA - startB;
-                return (b.val || 0) - (a.val || 0);
-            });
-
-            const maxPapers = d3.max(nodes, d => d.nodeCount || 0) || 50;
-            const heightScale = d3.scaleLinear().domain([1, maxPapers]).range([10, 60]);
-            const lanes = [];
-            const MAX_ROW_HEIGHT = 60;
-            const LANE_PADDING = 8;
-            const ROW_SPACE = MAX_ROW_HEIGHT + LANE_PADDING;
-
-            sorted.forEach(node => {
-                const startYear = node.minYear !== undefined ? node.minYear : minYear;
-                const endYear = node.maxYear !== undefined ? node.maxYear : startYear;
-                const xStart = xScale(startYear);
-                const xEnd = xScale(endYear);
-                let width = xEnd - xStart;
-                if (width < 30) width = 30;
-                const visualXEnd = xStart + width;
-                const height = heightScale(node.nodeCount || 1);
-
-                let assignedLaneIndex = -1;
-                const X_BUFFER = 10;
-                for (let i = 0; i < lanes.length; i++) {
-                    if (lanes[i] + X_BUFFER < xStart) {
-                        assignedLaneIndex = i;
-                        lanes[i] = visualXEnd;
-                        break;
-                    }
-                }
-                if (assignedLaneIndex === -1) {
-                    assignedLaneIndex = lanes.length;
-                    lanes.push(visualXEnd);
-                }
-
-                node._laneIndex = assignedLaneIndex;
-                node._layoutX = xStart;
-                node._layoutWidth = width;
-                node._layoutHeight = height;
-            });
-
-            sorted.forEach(node => {
-                const lane = node._laneIndex;
-                let laneOffset = 0;
-                if (lane > 0) {
-                    const sign = lane % 2 !== 0 ? -1 : 1;
-                    const multiplier = Math.ceil(lane / 2);
-                    laneOffset = sign * multiplier * ROW_SPACE;
-                }
-                const centerX = node._layoutX + (node._layoutWidth / 2);
-                const centerY = this.graphCenterY + laneOffset;
-                node.fx = centerX; node.fy = centerY;
-                node.x = centerX; node.y = centerY;
-                node.vx = 0; node.vy = 0;
-            });
-
-            sim.force("x", null).force("y", null).force("collide", null).force("charge", null)
-                .force("link", d3.forceLink(edges).id(d => d.id).strength(0));
-        } else {
-            const sorted = [...nodes].sort((a, b) => (b.val || 0) - (a.val || 0) || a.id.localeCompare(b.id));
-            sorted.forEach((n, i) => {
-                n.fx = null; n.fy = null;
-                const theta = i * 2.39996;
-                const spread = 8;
-                const r = spread * Math.sqrt(i) + (n.val * 0.2);
-                const tx = Math.cos(theta) * r;
-                const ty = Math.sin(theta) * r + this.graphCenterY;
-                if (!n.x && !n.y) { n.x = tx; n.y = ty; }
-                n._targetX = tx; n._targetY = ty;
-            });
-
-            sim.force("link", d3.forceLink(edges).id(d => d.id).strength(0.05))
-                .force("x", d3.forceX(d => d._targetX).strength(0.3))
-                .force("y", d3.forceY(d => d._targetY).strength(0.3))
-                .force("collide", d3.forceCollide().radius(d => (d.val * 0.3 + 5)).iterations(3))
-                .force("charge", d3.forceManyBody().strength(d => -5 - (d.val * 0.5)));
-        }
-        return sim;
-    }
-
-    // --- Field / Paper View Layouts ---
-
-    applyFieldLayout(nodes, edges, sim, selectedNode, layoutMode, scales) {
-        if (layoutMode === 'TIMELINE') {
-            const minYear = d3.min(nodes, d => d.year) || 1990;
-            const maxYear = d3.max(nodes, d => d.year) || 2025;
-            const xScale = d3.scaleLinear().domain([minYear, maxYear]).range([-this.width * 0.8, this.width * 0.8]);
-            const sorted = [...nodes].sort((a, b) => (b.citationCount || 0) - (a.citationCount || 0));
-            sorted.forEach((d, i) => {
-                const sign = i % 2 === 0 ? 1 : -1;
-                const offset = Math.ceil(i / 2) * 50;
-                d._targetY = offset * sign;
-            });
-            sim.force("x", d3.forceX(d => xScale(d.year)).strength(0.9))
-                .force("y", d3.forceY(d => d._targetY + this.graphCenterY).strength(0.6))
-                .force("collide", d3.forceCollide().radius(d => (d._w ? d._w / 1.8 : 35)).iterations(2))
-                .force("charge", d3.forceManyBody().strength(-50))
-                .force("link", d3.forceLink(edges).id(d => d.id).strength(0.1));
-        } else {
-            const linkDist = selectedNode ? 450 : 150;
-            sim.force("link", d3.forceLink(edges).id(d => d.id).distance(linkDist));
-            if (selectedNode) {
-                sim.force("charge", d3.forceManyBody().strength(-3000))
-                    .force("collide", d3.forceCollide().radius(d => {
-                        if (d.id === selectedNode.id) return d._w * 0.8 + 80;
-                        return d._w * 0.6 + 20;
-                    }).iterations(4))
-                    .force("center-pin", d3.forceRadial(0, selectedNode.x, selectedNode.y).strength(d => d.id === selectedNode.id ? 1 : 0));
-                const maxCites = d3.max(nodes, d => d.citationCount) || 1;
-                sim.force("neighbor-ring", d3.forceRadial(d => {
-                    if (d.id === selectedNode.id) return 0;
-                    const importance = (d.citationCount || 0) / maxCites;
-                    return 300 + ((1 - importance) * 400);
-                }, selectedNode.x, selectedNode.y).strength(0.6));
-            } else {
-                sim.force("charge", d3.forceManyBody().strength(d => d._isExtra ? -1600 : -600))
-                    .force("collide", d3.forceCollide().radius(d => (d._w * 0.6) + (d._isExtra ? 260 : 40)).iterations(4))
-                    .force("center", d3.forceCenter(0, this.graphCenterY));
-                const maxCites = d3.max(nodes, n => n.citationCount) || 1;
-                sim.force("radial", d3.forceRadial(d => (1 - (d.citationCount / maxCites)) * 500, 0, 0).strength(0.3));
-            }
-        }
-        return sim;
-    }
-
-    applyHomeLayout(nodes, sim) {
-        const spacing = Math.max(300, Math.min(450, this.width * 0.28));
-        nodes.forEach((n, i) => {
-            n.x = (i === 0 ? -1 : 1) * spacing;
-            n.y = 0;
-            n.fx = n.x;
-            n.fy = 0;
-        });
-        sim.force('x', null).force('y', null).force('charge', null)
-            .force('collide', null).force('link', null).force('center', null);
-        return sim;
-    }
-
-    applyFoodGalaxyLayout(nodes, sim) {
-        // Tessellating flat-top hexagon grid (3 columns: 4-3-4 = 11 groups).
-        // Flat-top hex adjacency: centers are hexR*sqrt(3) apart.
-        // Column step = 3*hexR/2, row step = hexR*sqrt(3), odd columns offset by hexR*sqrt(3)/2.
-        const hexR = 280;
-        const hexStep = hexR * 1.5;          // horizontal distance between column centers
-        const hexRowStep = hexR * Math.sqrt(3); // vertical distance between rows in same column
-
-        // Groups assigned to a 3-column tessellating grid:
-        // Col A (4 rows), Col B (3 rows, offset), Col C (4 rows)
-        const GRID = [
-            { group: 'vegetables',  col: 0, row: 0 },
-            { group: 'fruits',      col: 0, row: 1 },
-            { group: 'meat',        col: 0, row: 2 },
-            { group: 'proteins',    col: 0, row: 3 },
-            { group: 'dairy',       col: 1, row: 0 },
-            { group: 'grains',      col: 1, row: 1 },
-            { group: 'legumes',     col: 1, row: 2 },
-            { group: 'fats',        col: 2, row: 0 },
-            { group: 'functional',  col: 2, row: 1 },
-            { group: 'sweets',      col: 2, row: 2 },
-            { group: 'drinks',      col: 2, row: 3 },
+    applyTopicsLayout(nodes, sim) {
+        const R = LayoutEngine.TOPIC_HEX_R;
+        // Flat-top hex neighbours sit at 30/150/210/330 degrees, sqrt(3)*R away.
+        const step = Math.sqrt(3) * R;
+        const dx = step * Math.cos(Math.PI / 6);   // 1.5 * R
+        const dy = step * Math.sin(Math.PI / 6);   // 0.866 * R
+        const cells = [
+            { x: 0, y: 0 },
+            { x: -dx, y: -dy }, { x: dx, y: -dy },
+            { x: -dx, y: dy }, { x: dx, y: dy },
         ];
 
-        // Col A at x=-hexStep, Col B at x=0, Col C at x=+hexStep.
-        // Standard centering: (row - (nRows-1)/2) * hexRowStep places rows symmetrically.
-        // This produces perfect tessellation: col B rows at -h,0,+h interleave with
-        // col A/C rows at -1.5h,-0.5h,+0.5h,+1.5h (each col B hex is distance hexR√3 from its 4 neighbors).
-        const colX = [-hexStep, 0, hexStep];
-        const rowCounts = [4, 3, 4];
-        const groupCenters = {};
-        GRID.forEach(({ group, col, row }) => {
-            const nRows = rowCounts[col];
-            const x = colX[col];
-            const y = (row - (nRows - 1) / 2) * hexRowStep + this.graphCenterY;
-            groupCenters[group] = { x, y };
+        // Biggest topic takes the centre cell; nodes arrive sorted by volume.
+        nodes.forEach((n, i) => {
+            const cell = cells[i % cells.length];
+            n.hexR = R;
+            n.fx = cell.x;
+            n.fy = cell.y + this.graphCenterY;
+            n.x = n.fx;
+            n.y = n.fy;
+            n.vx = 0;
+            n.vy = 0;
         });
 
-        nodes.forEach(n => {
-            n.fx = null; n.fy = null;
-            if (n.isMenuNode) {
-                n.x = 1200; n.y = -900;
-                return;
-            }
-            if (n.isFoodGroupLabel) {
-                const c = groupCenters[n.group] || { x: 0, y: this.graphCenterY };
-                n.fx = c.x; n.fy = c.y;
-                n.x = c.x; n.y = c.y;
-                return;
-            }
-            const c = groupCenters[n.group] || { x: 0, y: this.graphCenterY };
-            n.x = c.x + (Math.random() - 0.5) * 40;
-            n.y = c.y + (Math.random() - 0.5) * 40;
-        });
-
-        // Hard position clamp: runs every tick (unlike forces, unaffected by alpha decay).
-        // Uses the inscribed circle (apothem) of the hexagon as the containment boundary.
-        const apothem = hexR * Math.sqrt(3) / 2;
-        sim.on("tick.foodContain", () => {
-            nodes.forEach(n => {
-                if (n.isFoodGroupLabel || n.isMenuNode) return;
-                const c = groupCenters[n.group];
-                if (!c) return;
-                const dx = n.x - c.x;
-                const dy = n.y - c.y;
-                const dist = Math.sqrt(dx * dx + dy * dy);
-                const nodeR = n.val * 1.5 + 12;
-                const limit = apothem - nodeR;
-                if (limit > 0 && dist > limit && dist > 0) {
-                    const scale = limit / dist;
-                    n.x = c.x + dx * scale;
-                    n.y = c.y + dy * scale;
-                    // Kill outward velocity component to prevent re-escape
-                    const dot = n.vx * dx + n.vy * dy;
-                    if (dot > 0) {
-                        n.vx -= (dx / dist) * dot / dist;
-                        n.vy -= (dy / dist) * dot / dist;
-                    }
-                }
-            });
-        });
-
-        sim.force("center", null)
-            .force("x", d3.forceX(d => {
-                if (d.isMenuNode) return 1200;
-                return groupCenters[d.group]?.x ?? 0;
-            }).strength(d => d.isFoodGroupLabel ? 0 : 0.6))
-            .force("y", d3.forceY(d => {
-                if (d.isMenuNode) return -900;
-                return groupCenters[d.group]?.y ?? 0;
-            }).strength(d => d.isFoodGroupLabel ? 0 : 0.6))
-            .force("charge", d3.forceManyBody().strength(d => {
-                if (d.isFoodGroupLabel) return 0;
-                return -15 - (d.val * 1.0);
-            }))
-            .force("collide", d3.forceCollide().radius(d => {
-                if (d.isFoodGroupLabel) return 0;
-                return d.val * 1.5 + 12;
-            }).iterations(8))
-            .force("link", null);
+        // Positions are fixed - no forces, or the hexagons would drift apart.
+        sim.force("center", null).force("x", null).force("y", null)
+            .force("charge", null).force("collide", null).force("link", null);
 
         return sim;
     }
 
-    // Search layout — uses field layout defaults
-    applySearchLayout(nodes, edges, sim) {
-        return this.applyFieldLayout(nodes, edges, sim, null, 'CENTRAL', {});
+    // --- Claim View Layout ---
+    //
+    // A scatter plot on two independent axes:
+    //
+    //   X = netSupport     how true does the evidence say this is
+    //                      (refuted left, contested centre, supported right)
+    //   Y = evidenceQuality how good the studies are
+    //                      (meta-analyses and RCTs top, cross-sectional bottom)
+    //
+    // Size stays on paper count, so nothing is encoded twice. The quadrants
+    // read: top-right "solid and supported", bottom-right "supported but on
+    // weak studies", top-left "solidly refuted", centre "genuinely contested".
+    //
+    // Claims with no evidence have neither coordinate, so they sit on a
+    // labelled shelf below the plot rather than piling up at the origin.
+
+    applyClaimsLayout(nodes, sim) {
+        const assessed = nodes.filter(n => n.hasEvidence);
+        const unassessed = nodes.filter(n => !n.hasEvidence);
+
+        const plotW = Math.min(this.width * 0.66, 1250);
+        const plotH = 560;
+        const xScale = d3.scaleLinear().domain([-1, 1]).range([-plotW / 2, plotW / 2]);
+        const yScale = d3.scaleLinear().domain([0, 1]).range([plotH / 2, -plotH / 2]);
+
+        const plotCY = this.graphCenterY - (unassessed.length ? 200 : 0);
+
+        assessed.forEach(n => {
+            n._targetX = xScale(n.netSupport ?? 0);
+            n._targetY = plotCY + yScale(n.evidenceQuality ?? 0);
+            n._inPlot = true;
+        });
+
+        // Shelf: a plain grid ordered by literature volume, biggest first, so
+        // the most-published unexplored questions read first.
+        let shelfTop = null;
+        if (unassessed.length) {
+            const perRow = Math.max(3, Math.ceil(Math.sqrt(unassessed.length * 1.7)));
+            const colStep = Math.min(plotW / (perRow - 1 || 1), 330);
+            const rowStep = 205;
+            shelfTop = plotCY + plotH / 2 + 300;
+
+            [...unassessed]
+                .sort((a, b) => (b.openAlexCount || 0) - (a.openAlexCount || 0))
+                .forEach((n, i) => {
+                    const row = Math.floor(i / perRow);
+                    const col = i % perRow;
+                    const rowCount = Math.min(perRow, unassessed.length - row * perRow);
+                    n._targetX = (col - (rowCount - 1) / 2) * colStep;
+                    n._targetY = shelfTop + row * rowStep;
+                    n._inPlot = false;
+                });
+        }
+
+        // Geometry the Graph needs to draw axes and the shelf divider.
+        this.claimsFrame = {
+            plotCX: 0, plotCY, plotW, plotH, shelfTop,
+            xScale, yScale, hasPlot: assessed.length > 0,
+        };
+
+        nodes.forEach(n => {
+            n.x = n._targetX;
+            n.y = n._targetY;
+            n.fx = null;
+            n.fy = null;
+        });
+
+        sim.force("center", null)
+            .force("link", null)
+            .force("x", d3.forceX(d => d._targetX).strength(0.9))
+            .force("y", d3.forceY(d => d._targetY).strength(d => d._inPlot ? 0.9 : 0.7))
+            .force("charge", d3.forceManyBody().strength(d => -50 - (d.val || 20)))
+            .force("collide", d3.forceCollide().radius(d => (d.val || 20) + 22).iterations(6));
+
+        return sim;
     }
+
+    // --- Evidence View Layout ---
+    //
+    // A timeline. X is publication year, left to right. Supporting papers sit
+    // above the axis, refuting below, neutral on it. Reading left to right
+    // shows whether a claim settled over time or is still being argued, and
+    // spreads the papers along an axis that actually means something.
+    //
+    // Distance from the axis encodes citation impact, so the papers that moved
+    // the field sit furthest out and are easiest to spot.
+
+    applyEvidenceLayout(nodes, edges, sim) {
+        const years = nodes.map(n => n.year).filter(y => y && y > 1900);
+        const minYear = years.length ? Math.min(...years) : 1990;
+        const maxYear = years.length ? Math.max(...years) : 2025;
+
+        const plotW = Math.min(Math.max(this.width * 0.82, 900), 2200);
+        const xScale = d3.scaleLinear()
+            .domain([minYear, maxYear === minYear ? minYear + 1 : maxYear])
+            .range([-plotW / 2, plotW / 2]);
+
+        const maxCites = d3.max(nodes, n => n.citationCount || 0) || 1;
+        const citeScale = d3.scaleSqrt().domain([0, maxCites]).range([0, 300]).clamp(true);
+
+        const axisY = this.graphCenterY;
+        const stanceSign = { supports: -1, refutes: 1, neutral: 0 };  // SVG y grows downward
+
+        // Papers published in the same year need vertical separation or they
+        // stack into a single column; bucket by year and fan within the bucket.
+        const buckets = new Map();
+
+        nodes.forEach(n => {
+            const year = (n.year && n.year > 1900) ? n.year : minYear;
+            const sign = stanceSign[n.stance] ?? 0;
+            const key = `${year}|${n.stance}`;
+            const index = buckets.get(key) || 0;
+            buckets.set(key, index + 1);
+
+            n._targetX = xScale(year) + (index % 3 - 1) * 26;
+
+            if (sign === 0) {
+                // Neutral papers hug the axis, alternating side to side.
+                n._targetY = axisY + (index % 2 === 0 ? -1 : 1) * (26 + index * 5);
+            } else {
+                const impact = citeScale(n.citationCount || 0);
+                n._targetY = axisY + sign * (90 + impact + index * 34);
+            }
+
+            n.x = n._targetX;
+            n.y = n._targetY;
+            n.fx = null;
+            n.fy = null;
+        });
+
+        this.evidenceFrame = { minYear, maxYear, plotW, axisY, xScale };
+
+        sim.force("center", null)
+            .force("link", d3.forceLink(edges).id(d => d.id).strength(0))
+            .force("x", d3.forceX(d => d._targetX).strength(0.95))
+            .force("y", d3.forceY(d => d._targetY).strength(0.5))
+            .force("charge", d3.forceManyBody().strength(-90))
+            .force("collide", d3.forceCollide().radius(d => (d._w ? d._w / 2 + 6 : 50)).iterations(6));
+
+        return sim;
+    }
+
 }

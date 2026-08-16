@@ -2,110 +2,53 @@ import React from 'react';
 import '../styles/Galaxy.css';
 import { SearchBar } from './SearchBar';
 
+/**
+ * Header: breadcrumb back-button, claim search, title.
+ *
+ *   TOPICS -> CLAIMS -> EVIDENCE
+ */
 export const ControlPanel = ({
     viewMode,
-    layout,
-    grouping,
-    selected,
-    activeGroupLabel,
-    galaxyName,
-    searchQuery,
-    onBackToHome,
-    onBackToUniverse,
-    onBackToGalaxy,
-    onBackFromSearch,
-    onLayoutChange,
-    onGroupingChange,
-    onSearch,
-    paperIndex,
-    onAutocompleteSelect,
-    fieldSource
+    topicName,
+    claimText,
+    claimIndex,
+    onClaimSelect,
+    onBackToTopics,
+    onBackToClaims,
 }) => {
-
-    const layoutOptions = [
-        { label: "Central", value: "CENTRAL" },
-        { label: "Timeline", value: "TIMELINE" }
-    ];
-
-    // Grouping dimensions for baby food
-    const groupingOptions = [
-        { label: "Food Type", value: "FOOD_TYPE" },
-        { label: "Baby Age", value: "AGE" },
-        { label: "Recommendation", value: "RECOMMENDATION" }
-    ];
-
-    let headerTitle = "Map of Baby Food Science";
-    if (viewMode === 'HOME') {
-        headerTitle = "Map of Baby Food Science";
-    } else if (viewMode === 'FOOD_GALAXY') {
-        headerTitle = "Food Map";
-    } else if (viewMode === 'UNIVERSE') {
-        headerTitle = "Recommendations";
-    } else if (viewMode === 'GALAXY') {
-        headerTitle = galaxyName || "Topic View";
-    } else if (viewMode === 'FIELD' || viewMode === 'DETAIL') {
-        headerTitle = selected ? selected.title : (activeGroupLabel || "Papers");
-    } else if (viewMode === 'SEARCH') {
-        headerTitle = searchQuery ? `"${searchQuery}"` : "Search Results";
-    }
-
-    const isSearch = viewMode === 'SEARCH';
+    const titles = {
+        TOPICS: 'Map of Baby Science by Topic',
+        CLAIMS: topicName || 'Claims',
+        EVIDENCE: claimText || 'Evidence',
+    };
 
     return (
         <div className="galaxy-header">
-            <div className="controls-row" style={{ display: 'flex', flexDirection: 'column', gap: '12px', alignItems: 'flex-start', position: 'absolute', top: 20, left: 20, pointerEvents: 'auto' }}>
-                {viewMode === 'FOOD_GALAXY' && <button className="back-to-galaxy" onClick={onBackToHome}>← Home</button>}
-                {viewMode === 'UNIVERSE' && <button className="back-to-galaxy" onClick={onBackToHome}>← Home</button>}
-                {viewMode === 'GALAXY' && <button className="back-to-galaxy" onClick={onBackToUniverse}>← Recommendations</button>}
-                {(viewMode === 'FIELD' || viewMode === 'DETAIL') && (
-                    <button className="back-to-galaxy" onClick={onBackToGalaxy}>
-                        ← {fieldSource === 'FOOD_GALAXY' ? 'Food Map' : 'Back'}
+            <div
+                className="controls-row"
+                style={{
+                    display: 'flex', flexDirection: 'column', gap: '12px',
+                    alignItems: 'flex-start', position: 'absolute',
+                    top: 20, left: 20, pointerEvents: 'auto',
+                }}
+            >
+                {viewMode === 'CLAIMS' && (
+                    <button className="back-to-galaxy" onClick={onBackToTopics}>
+                        ← All topics
                     </button>
                 )}
-                {isSearch && <button className="back-to-galaxy" onClick={onBackFromSearch}>← Back</button>}
-
-                {!isSearch && viewMode !== 'HOME' && (
-                    <div className="control-group" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <strong style={{ color: '#64748b', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Layout</strong>
-                        <div className="toggle-group">
-                            {layoutOptions.map(opt => (
-                                <button
-                                    key={opt.value}
-                                    className={`toggle-btn ${layout === opt.value ? 'active' : ''}`}
-                                    onClick={() => onLayoutChange(opt.value)}
-                                >
-                                    {opt.label}
-                                </button>
-                            ))}
-                        </div>
-                    </div>
-                )}
-
-                {viewMode === 'GALAXY' && (
-                    <div className="control-group" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <strong style={{ color: '#64748b', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Group by</strong>
-                        <div className="toggle-group">
-                            {groupingOptions.map(opt => (
-                                <button
-                                    key={opt.value}
-                                    className={`toggle-btn ${grouping === opt.value ? 'active' : ''}`}
-                                    onClick={() => onGroupingChange(opt.value)}
-                                >
-                                    {opt.label}
-                                </button>
-                            ))}
-                        </div>
-                    </div>
+                {viewMode === 'EVIDENCE' && (
+                    <button className="back-to-galaxy" onClick={onBackToClaims}>
+                        ← {topicName || 'Claims'}
+                    </button>
                 )}
             </div>
 
             <div style={{ position: 'absolute', top: 20, right: 20, pointerEvents: 'auto' }}>
-                <SearchBar onSearch={onSearch} currentQuery={searchQuery} paperIndex={paperIndex} onAutocompleteSelect={onAutocompleteSelect} />
+                <SearchBar claimIndex={claimIndex} onClaimSelect={onClaimSelect} />
             </div>
 
-            <div className="galaxy-title">
-                {headerTitle}
-            </div>
+            <div className="galaxy-title">{titles[viewMode]}</div>
         </div>
     );
 };

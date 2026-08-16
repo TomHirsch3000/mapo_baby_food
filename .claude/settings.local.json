@@ -1,6 +1,7 @@
 {
   "permissions": {
     "allow": [
+      "Bash",
       "WebFetch(domain:docs.openalex.org)",
       "WebFetch(domain:developers.openalex.org)",
       "Bash(curl -s \"https://api.openalex.org/topics?search=infant+nutrition&per-page=20\")",

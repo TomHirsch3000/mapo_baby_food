@@ -1,0 +1,93 @@
+{
+  "version": 3,
+  "description": "Map of Baby Science by Topic",
+  "topics": [
+    {
+      "id": "screens",
+      "name": "Screens & Media",
+      "colour": "#b5539c",
+      "blurb": "Screen exposure, media content and its effects",
+      "claimCount": 11,
+      "researchedClaimCount": 2,
+      "openAlexCount": 66211,
+      "paperCount": 202,
+      "supports": 81,
+      "refutes": 38,
+      "neutral": 82,
+      "netSupport": 0.361,
+      "evidenceVolume": 810.01,
+      "iconPath": "images/topics/screens.jpg"
+    },
+    {
+      "id": "food",
+      "name": "Food & Nutrition",
+      "colour": "#e8833a",
+      "blurb": "Allergens, first foods, milk, nutrients and food safety",
+      "claimCount": 26,
+      "researchedClaimCount": 2,
+      "openAlexCount": 51774,
+      "paperCount": 224,
+      "supports": 106,
+      "refutes": 32,
+      "neutral": 85,
+      "netSupport": 0.536,
+      "evidenceVolume": 938.56,
+      "iconPath": "images/topics/food.jpg"
+    },
+    {
+      "id": "activity",
+      "name": "Activity & Motor",
+      "colour": "#d94f4f",
+      "blurb": "Tummy time, movement, milestones and physical development",
+      "claimCount": 12,
+      "researchedClaimCount": 0,
+      "openAlexCount": 36383,
+      "paperCount": 0,
+      "supports": 0,
+      "refutes": 0,
+      "neutral": 0,
+      "netSupport": 0.0,
+      "evidenceVolume": 0.0,
+      "iconPath": "images/topics/activity.jpg"
+    },
+    {
+      "id": "learning",
+      "name": "Learning & Play",
+      "colour": "#39a86b",
+      "blurb": "Language, reading, play and early cognitive development",
+      "claimCount": 14,
+      "researchedClaimCount": 0,
+      "openAlexCount": 27853,
+      "paperCount": 0,
+      "supports": 0,
+      "refutes": 0,
+      "neutral": 0,
+      "netSupport": 0.0,
+      "evidenceVolume": 0.0,
+      "iconPath": "images/topics/learning.jpg"
+    },
+    {
+      "id": "sleep",
+      "name": "Sleep",
+      "colour": "#5b6ee1",
+      "blurb": "Safe sleep, sleep patterns, settling and environment",
+      "claimCount": 17,
+      "researchedClaimCount": 2,
+      "openAlexCount": 25408,
+      "paperCount": 230,
+      "supports": 118,
+      "refutes": 53,
+      "neutral": 59,
+      "netSupport": 0.38,
+      "evidenceVolume": 977.29,
+      "iconPath": "images/topics/sleep.jpg"
+    }
+  ],
+  "stats": {
+    "topics": 5,
+    "claims": 80,
+    "researchedClaims": 6,
+    "papers": 572,
+    "evaluated": 654
+  }
+}

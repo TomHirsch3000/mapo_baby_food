@@ -1,8 +1,22 @@
 import React, { useEffect, useRef, useMemo, useState } from 'react';
 import * as d3 from 'd3';
-import { roundedHexagonPath, getDeterministicPoint, hashString, EDGE_COLORS, getEdgeId, sanitizeId, generateHexPositions } from '../utils/d3-helpers';
+import { roundedHexagonPath, sanitizeId } from '../utils/d3-helpers';
 import { LayoutEngine } from '../modules/LayoutEngine';
-import { getIconPath, getFallbackIconPath, shouldShowIcon } from '../config/categoryIcons';
+
+// Evidence palette, shared by claim nodes and evidence cards so a green node in
+// the claims view and a green card in the evidence view mean the same thing.
+export const STANCE_COLORS = {
+    supports: '#2e9e5b',
+    refutes: '#d64545',
+    neutral: '#94a3b8',
+    unevaluated: '#cbd5e1',
+};
+
+const STANCE_DIVERGING = d3.scaleLinear()
+    .domain([-1, 0, 1])
+    .range([STANCE_COLORS.refutes, STANCE_COLORS.neutral, STANCE_COLORS.supports])
+    .interpolate(d3.interpolateRgb)
+    .clamp(true);
 
 export const Graph = ({
     nodes,
@@ -16,10 +30,6 @@ export const Graph = ({
     onNodeClick,
     onNodeHover,
     onBackgroundClick,
-    onGalaxyClick,
-    onGroupClick,
-    onBackToUniverse,
-    onBackToGalaxy,
     scales,
     isReturning,
     width,
@@ -43,9 +53,6 @@ export const Graph = ({
     const edgeRevealPendingRef = useRef(false);
     const firstDataRenderRef = useRef(true);
 
-    const handlersRef = useRef({ onNodeClick, onNodeHover, onBackgroundClick, onGalaxyClick, onGroupClick, onNodeDoubleClick });
-    handlersRef.current = { onNodeClick, onNodeHover, onBackgroundClick, onGalaxyClick, onGroupClick, onNodeDoubleClick };
-
     useEffect(() => {
         layoutEngine.current.updateDimensions(width, height);
     }, [width, height]);
@@ -62,29 +69,23 @@ export const Graph = ({
         if (!svgRef.current || !width || !height) return;
 
         const svg = d3.select(svgRef.current);
-        const isUniverse = viewMode === 'UNIVERSE';
-        const isHome = viewMode === 'HOME';
-        const isFoodGalaxy = viewMode === 'FOOD_GALAXY';
-        const isGalaxy = viewMode === 'GALAXY';
-        const isSearch = viewMode === 'SEARCH';
-        const isField = viewMode === 'FIELD' || viewMode === 'DETAIL' || isSearch;
+        // The claim flow reuses the existing visual vocabulary rather than
+        // inventing new node shapes:
+        //   RECOMMENDATIONS -> hexagons grouped by domain  (as UNIVERSE)
+        //   CLAIMS          -> labelled circles            (as GALAXY)
+        //   EVIDENCE        -> paper cards                 (as FIELD)
+        const isTopics = viewMode === 'TOPICS';
+        const isClaims = viewMode === 'CLAIMS';
+        const isEvidence = viewMode === 'EVIDENCE';
 
         const currentNodes = nodes.map(n => ({ ...n }));
         const currentEdges = edges.map(e => ({ ...e }));
 
-        if (isField) {
+        if (isEvidence) {
             currentNodes.forEach(n => {
                 const cites = n.citationCount || 0;
-                const hasIcon = shouldShowIcon(n);
-                if (hasIcon) {
-                    n._w = 70 + Math.sqrt(cites) * 2;
-                    n._h = 100 + Math.sqrt(cites) * 2.5;
-                    n._hasIcon = true;
-                } else {
-                    n._w = 80 + Math.sqrt(cites) * 3;
-                    n._h = 50 + Math.sqrt(cites) * 1.5;
-                    n._hasIcon = false;
-                }
+                n._w = 80 + Math.sqrt(cites) * 3;
+                n._h = 50 + Math.sqrt(cites) * 1.5;
             });
         }
 
@@ -135,32 +136,22 @@ export const Graph = ({
 
         const sim = d3.forceSimulation(currentNodes);
 
-        if (isHome) {
-            layoutEngine.current.applyHomeLayout(currentNodes, sim);
-        } else if (isUniverse) {
-            if (layoutMode === 'TIMELINE') {
-                layoutEngine.current.applyUniverseTimelineLayout(currentNodes, sim, scales.universeXScale, scales.timelineHeightScale);
-            } else {
-                layoutEngine.current.applyUniverseCentralLayout(currentNodes, sim);
-            }
-        } else if (isFoodGalaxy) {
-            layoutEngine.current.applyFoodGalaxyLayout(currentNodes, sim);
-        } else if (isGalaxy) {
-            layoutEngine.current.applyGalaxyLayout(currentNodes, currentEdges, sim, layoutMode, scales);
-        } else if (isSearch) {
-            layoutEngine.current.applySearchLayout(currentNodes, currentEdges, sim);
+        if (isClaims) {
+            layoutEngine.current.applyClaimsLayout(currentNodes, sim);
+        } else if (isEvidence) {
+            layoutEngine.current.applyEvidenceLayout(currentNodes, currentEdges, sim);
         } else {
-            layoutEngine.current.applyFieldLayout(currentNodes, currentEdges, sim, selected, layoutMode, scales);
+            layoutEngine.current.applyTopicsLayout(currentNodes, sim);
         }
 
-        const DRY_RUN_TICKS = isHome ? 0 : (isFoodGalaxy ? 400 : (isGalaxy || isField) ? 300 : 120);
+        const DRY_RUN_TICKS = (isClaims || isEvidence) ? 300 : 120;
         sim.stop();
         sim.alpha(1);
         for (let i = 0; i < DRY_RUN_TICKS; ++i) {
             sim.tick();
         }
 
-        const getEdgeKey = (d) => `${(isGalaxy || isField) ? "G" : "P"}|${d.source.id || d.source}|${d.target.id || d.target}`;
+        const getEdgeKey = (d) => `${(isClaims || isEvidence) ? "G" : "P"}|${d.source.id || d.source}|${d.target.id || d.target}`;
         const getGradientId = (d) => `link-gradient-${sanitizeId(getEdgeKey(d))}`;
         const defs = svg.select("defs").empty() ? svg.append("defs") : svg.select("defs");
 
@@ -169,7 +160,7 @@ export const Graph = ({
                 const src = d.source;
                 const tgt = d.target;
 
-                if (isGalaxy) {
+                if (isClaims) {
                     const dx = tgt.x - src.x;
                     const dy = tgt.y - src.y;
                     const dist = Math.sqrt(dx * dx + dy * dy);
@@ -183,7 +174,7 @@ export const Graph = ({
                     const cx = midX + nx * offset;
                     const cy = midY + ny * offset;
                     return `M${src.x},${src.y} Q${cx},${cy} ${tgt.x},${tgt.y}`;
-                } else if (isField) {
+                } else if (isEvidence) {
                     const dx = tgt.x - src.x;
                     const dy = tgt.y - src.y;
                     const dist = Math.sqrt(dx * dx + dy * dy);
@@ -254,7 +245,7 @@ export const Graph = ({
                     return `M${src.x},${src.y} L${tgt.x},${tgt.y}`;
                 }
             });
-            if (isGalaxy) {
+            if (isClaims) {
                 defs.selectAll(".link-gradient")
                     .attr("x1", d => d.source.x).attr("y1", d => d.source.y)
                     .attr("x2", d => d.target.x).attr("y2", d => d.target.y);
@@ -264,13 +255,13 @@ export const Graph = ({
         const linkJoin = gLinks.selectAll(".d3-link").data(currentEdges, getEdgeKey);
         linkJoin.exit().remove();
         const linkEnter = linkJoin.enter().append("path")
-            .attr("class", `d3-link ${(isGalaxy || isField) ? 'type-galaxy-link' : 'type-paper-link'}`)
-            .attr("fill", isField ? "#999" : "none")
+            .attr("class", `d3-link ${(isClaims || isEvidence) ? 'type-galaxy-link' : 'type-paper-link'}`)
+            .attr("fill", isEvidence ? "#999" : "none")
             .attr("stroke-linecap", "round");
 
         const allLinks = linkEnter.merge(linkJoin);
 
-        if (isGalaxy || isField) {
+        if (isClaims || isEvidence) {
             allLinks.each(function (d) {
                 const id = getGradientId(d);
                 let grad = defs.select(`#${id}`);
@@ -284,9 +275,9 @@ export const Graph = ({
                 const cScale = scales.colorScale || d3.scaleOrdinal(d3.schemeTableau10);
                 const srcColor = srcNode ? (srcNode.groupColor || cScale(srcNode.xGroup || srcNode.id)) : "#ccc";
                 const tgtColor = tgtNode ? (tgtNode.groupColor || cScale(tgtNode.xGroup || tgtNode.id)) : "#ccc";
-                grad.select(".grad-stop-start").attr("stop-color", srcColor).attr("stop-opacity", isField ? 0.8 : 0.6);
-                grad.select(".grad-stop-end").attr("stop-color", tgtColor).attr("stop-opacity", isField ? 0.2 : 0.6);
-                if (isField) {
+                grad.select(".grad-stop-start").attr("stop-color", srcColor).attr("stop-opacity", isEvidence ? 0.8 : 0.6);
+                grad.select(".grad-stop-end").attr("stop-color", tgtColor).attr("stop-opacity", isEvidence ? 0.2 : 0.6);
+                if (isEvidence) {
                     d3.select(this).attr("fill", `url(#${id})`).attr("stroke", "none");
                 } else {
                     d3.select(this).attr("stroke", `url(#${id})`).attr("fill", "none");
@@ -295,47 +286,10 @@ export const Graph = ({
         }
 
         updateLinkPaths(allLinks);
-        allLinks.attr("stroke-width", d => (isGalaxy || isField) ? Math.max(2, Math.sqrt(d.weight || 1)) : 1)
+        allLinks.attr("stroke-width", d => (isClaims || isEvidence) ? Math.max(2, Math.sqrt(d.weight || 1)) : 1)
             .attr("stroke-opacity", 0);
 
-        // Food galaxy hexagon backgrounds are rendered as a static non-interactive layer
-        const foodNodes = isFoodGalaxy
-            ? currentNodes.filter(d => !d.isFoodGroupLabel && !d.isMenuNode)
-            : currentNodes;
-
-        if (isFoodGalaxy) {
-            const cScaleHex = scales.colorScale || d3.scaleOrdinal(d3.schemeTableau10);
-            const hexR = 280;
-            const hexGroups = currentNodes.filter(d => d.isFoodGroupLabel);
-            const hexBgJoin = gHexBg.selectAll(".hex-bg-cell").data(hexGroups, d => d.id);
-            hexBgJoin.exit().remove();
-            const hexBgEnter = hexBgJoin.enter().append("g").attr("class", "hex-bg-cell")
-                .style("pointer-events", "none");
-            hexBgEnter.append("path").attr("class", "hex-bg-shape");
-            hexBgEnter.append("text").attr("class", "hex-bg-label");
-            const hexBgAll = hexBgEnter.merge(hexBgJoin);
-            hexBgAll.attr("transform", d => `translate(${d.x ?? 0}, ${d.y ?? 0})`);
-            hexBgAll.select(".hex-bg-shape")
-                .attr("d", roundedHexagonPath(hexR))
-                .attr("fill", d => cScaleHex(d.group || 'Default'))
-                .attr("fill-opacity", 0.06)
-                .attr("stroke", d => cScaleHex(d.group || 'Default'))
-                .attr("stroke-width", 1.5)
-                .attr("stroke-opacity", 0.25);
-            hexBgAll.select(".hex-bg-label")
-                .attr("y", -hexR * 0.7)
-                .attr("text-anchor", "middle")
-                .style("font-family", "Inter, system-ui, sans-serif")
-                .style("font-size", "13px")
-                .style("font-weight", "700")
-                .style("fill", d => cScaleHex(d.group || 'Default'))
-                .style("fill-opacity", 0.85)
-                .style("letter-spacing", "0.1em")
-                .style("pointer-events", "none")
-                .text(d => d.name.toUpperCase());
-        }
-
-        const nodeJoin = gNodes.selectAll(".d3-node").data(foodNodes, d => d.id);
+        const nodeJoin = gNodes.selectAll(".d3-node").data(currentNodes, d => d.id);
         nodeJoin.exit().remove();
 
         const nodeEnter = nodeJoin.enter().append("g")
@@ -348,89 +302,50 @@ export const Graph = ({
 
         nodeEnter.each(function (d) {
             const el = d3.select(this);
-            if (isHome) {
-                el.append("circle").attr("class", "home-node-orbit");
-                el.append("circle").attr("class", "home-node-core");
-                const fo = el.append("foreignObject").attr("class", "home-node-fo");
-                fo.append("xhtml:div").attr("class", "home-node-div");
-            } else if (isFoodGalaxy && !d.isMenuNode) {
-                const clipId = `food-clip-${d.id}`;
-                el.append("defs").append("clipPath").attr("id", clipId)
-                    .append("circle").attr("class", "food-clip-circle");
-                el.append("circle").attr("class", "food-orbit");
-                el.append("image").attr("class", "food-img")
-                    .attr("clip-path", `url(#${clipId})`)
-                    .style("pointer-events", "none");
-                el.append("circle").attr("class", "food-ring");
-                const fo = el.append("foreignObject").attr("class", "food-label-fo");
-                fo.append("xhtml:div").attr("class", "food-label-div");
-            } else if (isUniverse && !d.isMenuNode) {
+            if (isTopics) {
+                const clipId = `topic-clip-${sanitizeId(d.id)}`;
                 el.append("path").attr("class", "orbit");
                 el.append("path").attr("class", "core");
+                el.append("defs").append("clipPath").attr("id", clipId)
+                    .append("circle").attr("class", "topic-clip-circle");
                 el.append("image")
                     .attr("class", "node-icon")
+                    .attr("clip-path", `url(#${clipId})`)
                     .style("pointer-events", "none")
                     .style("display", "none");
+                el.append("circle").attr("class", "topic-photo-ring")
+                    .style("pointer-events", "none");
                 const fo = el.append("foreignObject").attr("class", "hex-label-fo");
                 fo.append("xhtml:div").attr("class", "hex-label-div");
-            } else if (isGalaxy) {
-                if (layoutMode === 'TIMELINE') {
-                    el.append("rect").attr("class", "orbit");
-                    el.append("rect").attr("class", "core").attr("display", "none");
-                } else {
-                    el.append("circle").attr("class", "orbit");
-                    el.append("circle").attr("class", "core");
-                    const fo = el.append("foreignObject").attr("class", "galaxy-label-fo");
-                    fo.append("xhtml:div").attr("class", "galaxy-label-div");
-                }
-            } else if (isField) {
-                if (d.isSearchDummy) {
-                    el.append("circle").attr("class", "search-dummy-orbit").attr("r", 90);
-                    el.append("circle").attr("class", "search-dummy-core").attr("r", 72);
-                    const fo = el.append("foreignObject")
-                        .attr("class", "search-dummy-fo")
-                        .attr("x", -72).attr("y", -72)
-                        .attr("width", 144).attr("height", 144);
-                    fo.append("xhtml:div").attr("class", "search-dummy-label");
-                } else {
-                    const w = d._w || 80;
-                    const h = d._h || 50;
-                    el.append("rect").attr("class", "node-paper-bg")
-                        .attr("x", -w / 2).attr("y", -h / 2)
-                        .attr("width", w).attr("height", h)
-                        .attr("fill", "#ffffff").attr("rx", 6);
-                    el.append("rect").attr("class", "node-paper-card")
-                        .attr("x", -w / 2).attr("y", -h / 2)
-                        .attr("width", w).attr("height", h).attr("rx", 6);
-                    const fo = el.append("foreignObject").attr("class", "node-fo-wrapper")
-                        .attr("x", -w / 2).attr("y", -h / 2)
-                        .attr("width", w).attr("height", h);
-                    fo.append("xhtml:div")
-                        .attr("class", d => `node-paper-content${d._hasIcon ? ' node-paper-vertical' : ''}`)
-                        .style("width", "100%").style("height", "100%")
-                        .style("display", "flex")
-                        .style("flex-direction", d => d._hasIcon ? "column" : "row")
-                        .style("align-items", "center")
-                        .style("justify-content", d => d._hasIcon ? "flex-start" : "center")
-                        .style("text-align", "center").style("overflow", "hidden")
-                        .style("padding", "4px").style("box-sizing", "border-box")
-                        .html(d => {
-                            const title = `<div class="node-paper-title" style="width:100%;word-wrap:break-word;overflow-wrap:break-word;white-space:normal;line-height:1.2;text-align:center;">${d.title || d.name || 'Untitled'}</div>`;
-                            if (d._hasIcon) {
-                                const iconPath = getIconPath(d);
-                                const iconUrl = resolveIconHref(iconPath);
-                                return title + `<div class="node-paper-icon-wrap" style="flex:1;width:100%;display:flex;align-items:center;justify-content:center;overflow:hidden;min-height:0;"><img class="node-paper-icon" src="${iconUrl}" alt="" style="max-width:90%;max-height:90%;object-fit:contain;" /></div>`;
-                            }
-                            return title;
-                        });
-                }
-            } else {
-                el.append("rect").attr("class", "node-rect").attr("rx", 6);
-                el.append("foreignObject").attr("class", "fo-content").append("xhtml:div").attr("class", "node-fo");
+            } else if (isClaims) {
+                el.append("circle").attr("class", "orbit");
+                el.append("circle").attr("class", "core");
+                const fo = el.append("foreignObject").attr("class", "galaxy-label-fo");
+                fo.append("xhtml:div").attr("class", "galaxy-label-div");
+            } else if (isEvidence) {
+                const w = d._w || 80;
+                const h = d._h || 50;
+                el.append("rect").attr("class", "node-paper-bg")
+                    .attr("x", -w / 2).attr("y", -h / 2)
+                    .attr("width", w).attr("height", h)
+                    .attr("fill", "#ffffff").attr("rx", 6);
+                el.append("rect").attr("class", "node-paper-card")
+                    .attr("x", -w / 2).attr("y", -h / 2)
+                    .attr("width", w).attr("height", h).attr("rx", 6);
+                el.append("foreignObject").attr("class", "node-fo-wrapper")
+                    .attr("x", -w / 2).attr("y", -h / 2)
+                    .attr("width", w).attr("height", h)
+                    .append("xhtml:div")
+                    .attr("class", "node-paper-content")
+                    .style("width", "100%").style("height", "100%")
+                    .style("display", "flex").style("align-items", "center")
+                    .style("justify-content", "center")
+                    .style("text-align", "center").style("overflow", "hidden")
+                    .style("padding", "4px").style("box-sizing", "border-box")
+                    .html(n => `<div class="node-paper-title" style="width:100%;word-wrap:break-word;overflow-wrap:break-word;white-space:normal;line-height:1.2;text-align:center;">${n.title || n.name || 'Untitled'}</div>`);
             }
             el.append("text").attr("class", "label-main");
             el.append("text").attr("class", "label-sub");
-            if (isUniverse) el.append("text").attr("class", "label-right");
         });
 
         const allNodes = nodeEnter.merge(nodeJoin);
@@ -439,287 +354,232 @@ export const Graph = ({
         const cScale = scales.colorScale || d3.scaleOrdinal(d3.schemeTableau10);
         allNodes.each(function (d) {
             const el = d3.select(this);
-            if (isHome) {
-                const colors = { food_map: '#10b981', recommendations: '#6366f1' };
-                const color = colors[d.id] || '#6366f1';
-                const r = 110;
-                el.select(".home-node-orbit")
-                    .attr("r", r + 20)
-                    .attr("fill", color)
-                    .attr("fill-opacity", 0.08)
-                    .attr("stroke", color)
-                    .attr("stroke-opacity", 0.2)
-                    .attr("stroke-width", 1.5);
-                el.select(".home-node-core")
+            if (isClaims) {
+                // Radius arrives in pixels from the OpenAlex match count, so size
+                // means "how much has been published around this question".
+                // Fill means stance: a claim with evidence is tinted by
+                // netSupport; one without is left hollow and grey.
+                const r = d.val || 20;
+                const decided = (d.supports || 0) + (d.refutes || 0);
+                const colour = d.hasEvidence
+                    ? STANCE_DIVERGING(d.netSupport ?? 0)
+                    : STANCE_COLORS.unevaluated;
+
+                el.select(".orbit")
+                    .attr("r", r + 9).attr("width", null).attr("height", null)
+                    .attr("fill", colour).attr("fill-opacity", d.hasEvidence ? 0.12 : 0.05)
+                    .attr("stroke", colour).attr("stroke-opacity", 0.3).attr("stroke-width", 1.5);
+                el.select(".core")
                     .attr("r", r)
-                    .attr("fill", color)
-                    .attr("fill-opacity", 0.15)
-                    .attr("stroke", color)
+                    .attr("fill", colour)
+                    .attr("fill-opacity", d.hasEvidence ? (decided ? 0.85 : 0.4) : 0.18)
+                    .attr("stroke", d.hasEvidence ? "#ffffff" : STANCE_COLORS.neutral)
                     .attr("stroke-width", 2)
-                    .attr("stroke-opacity", 0.6);
-                el.select(".home-node-fo")
-                    .attr("x", -(r)).attr("y", -(r * 0.6))
-                    .attr("width", r * 2).attr("height", r * 1.2);
-                el.select(".home-node-div")
-                    .style("width", `${r * 2}px`).style("height", `${r * 1.2}px`)
-                    .style("display", "flex").style("flex-direction", "column")
-                    .style("align-items", "center").style("justify-content", "center")
-                    .style("text-align", "center").style("font-family", "Inter, system-ui, sans-serif")
-                    .style("color", color).style("pointer-events", "none")
-                    .html(`<div style="font-size:22px;font-weight:700;margin-bottom:6px;">${d.name}</div><div style="font-size:13px;opacity:0.7;line-height:1.4;">${d.description || ''}</div>`);
-                el.select(".label-main").text("");
-                el.select(".label-sub").text("");
-                return;
-            }
-            if (isFoodGalaxy && !d.isMenuNode) {
-                const minR = 12, maxR = 65;
-                const total = d.totalOpenAlexCount || d.totalWorksCount || 0;
-                const logFrac = total > 0 ? Math.min(Math.log10(Math.max(1, total)) / 4.7, 1) : 0;
-                const r = minR + (maxR - minR) * logFrac;
-                const color = cScale(d.group || 'Default');
+                    .attr("stroke-dasharray", d.hasEvidence ? null : "4 3");
 
-                // Update clip path circle
-                el.select("clipPath circle").attr("r", r).attr("cx", 0).attr("cy", 0);
-
-                // Orbit/glow ring
-                el.select(".food-orbit")
-                    .attr("r", r + 8)
-                    .attr("fill", color)
-                    .attr("fill-opacity", 0.12)
-                    .attr("stroke", "none");
-
-                // Food image — iconCategory comes from the node directly or its raw data
-                const iconCategory = d.iconCategory || d.data?.iconCategory;
-                const imgSrc = iconCategory ? resolveIconHref(getIconPath({ iconCategory })) : null;
-                if (imgSrc) {
-                    el.select(".food-img")
-                        .attr("href", imgSrc)
-                        .attr("x", -r).attr("y", -r)
-                        .attr("width", r * 2).attr("height", r * 2)
-                        .attr("preserveAspectRatio", "xMidYMid slice")
-                        .style("display", null)
-                        .on("error", function() {
-                            d3.select(this).style("display", "none").on("error", null);
-                            el.select(".food-ring")
-                                .attr("fill", color)
-                                .attr("fill-opacity", 0.3);
-                        });
-                } else {
-                    el.select(".food-img").style("display", "none");
-                }
-
-                // Ring border
-                el.select(".food-ring")
-                    .attr("r", r)
-                    .attr("fill", imgSrc ? "none" : color)
-                    .attr("fill-opacity", imgSrc ? 0 : 0.3)
-                    .attr("stroke", color)
-                    .attr("stroke-width", 3)
-                    .attr("stroke-opacity", 0.7);
-
-                // Label below
-                const labelW = r * 2.8;
-                el.select(".food-label-fo")
-                    .attr("x", -labelW / 2).attr("y", r + 6)
-                    .attr("width", labelW).attr("height", 50)
+                const labelW = Math.max(210, r * 4.5);
+                const labelH = 150;
+                el.select(".galaxy-label-fo")
+                    .attr("x", -labelW / 2).attr("y", r + 10)
+                    .attr("width", labelW).attr("height", labelH)
                     .style("overflow", "visible").style("pointer-events", "none");
-                el.select(".food-label-div")
-                    .style("width", `${labelW}px`)
+
+                // Literature volume always shows - it is what sized the node.
+                const volume = `<div style="font-size:10px;color:#94a3b8;margin-top:3px;">
+                                  ${(d.openAlexCount || 0).toLocaleString()} papers published
+                                </div>`;
+
+                let status;
+                if (!d.hasEvidence) {
+                    status = `<div style="font-size:11px;margin-top:3px;color:#94a3b8;font-style:italic;">
+                                no evidence gathered
+                              </div>`;
+                } else if (decided || d.neutral) {
+                    status = `<div style="font-size:11px;margin-top:3px;">
+                                <span style="color:${STANCE_COLORS.supports};font-weight:700;">${d.supports || 0}</span>
+                                <span style="color:#94a3b8;"> for · </span>
+                                <span style="color:${STANCE_COLORS.refutes};font-weight:700;">${d.refutes || 0}</span>
+                                <span style="color:#94a3b8;"> against · ${d.neutral || 0} neutral</span>
+                              </div>`;
+                } else {
+                    status = `<div style="font-size:11px;margin-top:3px;color:#94a3b8;">
+                                ${d.unevaluated || 0} papers awaiting assessment
+                              </div>`;
+                }
+
+                el.select(".galaxy-label-div")
+                    .style("width", `${labelW}px`).style("height", `${labelH}px`)
                     .style("display", "flex").style("flex-direction", "column")
-                    .style("align-items", "center").style("text-align", "center")
-                    .style("font-family", "Inter, system-ui, sans-serif")
-                    .style("font-size", `${Math.max(11, Math.min(15, r * 0.18))}px`)
-                    .style("font-weight", "600").style("color", "#1e293b").style("line-height", "1.2")
-                    .html(`<div>${d.name}</div>${total > 0 ? `<div style="font-weight:400;font-size:0.8em;color:#64748b;">${total.toLocaleString()} papers</div>` : '<div style="font-weight:400;font-size:0.8em;color:#94a3b8;">No data yet</div>'}`);
+                    .style("align-items", "center").style("justify-content", "flex-start")
+                    .style("text-align", "center").style("font-family", "Inter, system-ui, sans-serif")
+                    .style("color", "#1e293b").style("line-height", "1.3")
+                    .html(
+                        `<div style="font-size:12.5px;font-weight:600;max-width:${labelW}px;">${d.claim || d.name || ""}</div>` +
+                        status +
+                        volume
+                    );
 
                 el.select(".label-main").text("");
                 el.select(".label-sub").text("");
                 return;
             }
-            if (isGalaxy) {
-                if (layoutMode === 'TIMELINE') {
-                    const w = d._layoutWidth || 30;
-                    const h = d._layoutHeight || 14;
-                    el.select(".orbit")
-                        .attr("x", -w / 2).attr("y", -h / 2)
-                        .attr("width", w).attr("height", h)
-                        .attr("rx", 6)
-                        .attr("fill", cScale(d.xGroup))
-                        .attr("fill-opacity", 0.6)
-                        .attr("stroke", "none").attr("r", null);
-                    el.select(".label-main")
-                        .text((d.name || "").substring(0, 30))
-                        .attr("x", 0).attr("y", -h / 2 - 5)
-                        .attr("dy", 0).attr("text-anchor", "middle")
-                        .style("font-size", "14px").style("fill", "#64748b").style("pointer-events", "none");
-                    el.select(".label-sub").text("");
+            if (isTopics) {
+                // Uniform tessellating hexagon: photo centred, text along the
+                // bottom edge. Size is fixed by the hex grid, so paper count is
+                // carried by the label rather than by area.
+                const hexR = d.hexR || 190;
+                const fill = d.colour || cScale(d.group || "Default");
+
+                el.select(".orbit")
+                    .attr("d", roundedHexagonPath(hexR))
+                    .attr("fill", fill)
+                    .attr("fill-opacity", 0.4)
+                    .attr("stroke", "#ffffff")
+                    .attr("stroke-width", 2);
+
+                const photoR = hexR * 0.34;
+                const photoCY = -hexR * 0.20;
+                const iconEl = el.select(".node-icon");
+
+                if (d.iconPath) {
+                    el.select(".topic-clip-circle")
+                        .attr("r", photoR).attr("cx", 0).attr("cy", photoCY);
+                    iconEl.attr("href", resolveIconHref(d.iconPath))
+                        .attr("width", photoR * 2).attr("height", photoR * 2)
+                        .attr("x", -photoR).attr("y", photoCY - photoR)
+                        .attr("preserveAspectRatio", "xMidYMid slice")
+                        .style("display", null);
+                    el.select(".topic-photo-ring")
+                        .attr("r", photoR).attr("cx", 0).attr("cy", photoCY)
+                        .attr("fill", "none")
+                        .attr("stroke", "#ffffff").attr("stroke-width", 3)
+                        .style("display", null);
+                    el.select(".core").attr("d", null).attr("r", 0).style("display", "none");
                 } else {
-                    const val = d.val || 20;
-                    const radius = val * 0.16;
-                    el.select(".orbit").attr("r", radius).attr("fill", cScale(d.xGroup)).attr("fill-opacity", 0.15)
-                        .attr("width", null).attr("height", null);
-                    el.select(".core").attr("r", radius * 0.6).attr("fill", cScale(d.xGroup));
-
-                    const labelW = Math.max(120, radius * 3);
-                    const labelH = 60;
-                    const labelY = radius + 4;
-                    el.select(".galaxy-label-fo")
-                        .attr("x", -labelW / 2).attr("y", labelY)
-                        .attr("width", labelW).attr("height", labelH)
-                        .style("overflow", "visible").style("pointer-events", "none");
-                    el.select(".galaxy-label-div")
-                        .style("width", `${labelW}px`).style("height", `${labelH}px`)
-                        .style("display", "flex").style("flex-direction", "column")
-                        .style("align-items", "center").style("justify-content", "flex-start")
-                        .style("text-align", "center").style("font-family", "Inter, system-ui, sans-serif")
-                        .style("font-size", `${Math.max(10, Math.min(20, val * 0.04))}px`)
-                        .style("color", "#1e293b").style("line-height", "1.2")
-                        .html(`<div style="font-weight:600;margin-bottom:2px;">${d.name || ""}</div>${d.nodeCount ? `<div style="font-weight:400;font-size:0.8em;color:#475569;">${d.nodeCount} papers</div>` : ""}`);
-                    el.select(".label-main").text("");
-                    el.select(".label-sub").text("");
+                    iconEl.style("display", "none");
+                    el.select(".topic-photo-ring").style("display", "none");
+                    el.select(".core")
+                        .attr("d", roundedHexagonPath(hexR * 0.34))
+                        .attr("r", null).attr("fill", fill)
+                        .style("display", null).style("filter", "blur(1px)");
                 }
-            } else if (isUniverse) {
-                const val = d.val || 20;
-                if (!d.isMenuNode) {
-                    if (layoutMode === 'TIMELINE' && d.data?.worksByDecade && scales.universeXScale) {
-                        el.select(".orbit").attr("d", null).attr("r", null);
-                        el.select(".core").attr("d", null).attr("r", null);
-                        const h = d._height || 60;
-                        const projectionFactor = 2.0;
-                        const dataForChart = d.data.worksByDecade.map(w =>
-                            w.decade === 2020 ? { ...w, works_count: w.works_count * projectionFactor } : w
-                        );
-                        const maxWorks = d3.max(dataForChart, w => w.works_count) || 1;
-                        const yScaleLocal = d3.scaleLinear().domain([0, maxWorks]).range([0, h - 10]);
-                        const areaGenerator = d3.area()
-                            .x(D => scales.universeXScale(D.decade))
-                            .y0(D => -yScaleLocal(D.works_count) / 2)
-                            .y1(D => yScaleLocal(D.works_count) / 2)
-                            .curve(d3.curveMonotoneX);
-                        el.select(".orbit").attr("d", areaGenerator(dataForChart))
-                            .attr("fill", cScale(d.group || d.data?.group || "Default"))
-                            .attr("fill-opacity", 0.6).attr("stroke", "none");
-                        el.select(".core").attr("d", null).attr("r", 0);
-                        const lastYearX = scales.universeXScale(2020);
-                        el.select(".label-main").text(d.name)
-                            .attr("x", lastYearX + 20).attr("y", 0)
-                            .attr("dx", 0).attr("dy", 5)
-                            .attr("text-anchor", "start")
-                            .style("font-size", "18px").style("font-weight", "500").style("fill", "#334155");
-                    } else {
-                        el.select(".orbit")
-                            .attr("d", roundedHexagonPath(val * 2.5))
-                            .attr("fill", cScale(d.group || d.data?.group || "Default"))
-                            .attr("fill-opacity", 0.4)
-                            .attr("stroke", "none")
-                            .attr("stroke-width", 0);
-                        el.select(".core")
-                            .attr("d", roundedHexagonPath(val * 0.8))
-                            .attr("r", null)
-                            .attr("fill", cScale(d.group || d.data?.group || "Default"))
-                            .style("filter", "blur(1px)");
 
-                        let iconEl = el.select(".node-icon");
-                        if (d.iconPath) {
-                            const iconSize = val * 1.8;
-                            const href = resolveIconHref(d.iconPath);
-                            iconEl.attr("href", href)
-                                .attr("width", iconSize).attr("height", iconSize)
-                                .attr("x", -iconSize / 2).attr("y", -iconSize / 2 - 15)
-                                .style("display", null);
-                        } else {
-                            iconEl.style("display", "none");
-                        }
+                // Text block sits in the lower third, inside the flat bottom edge.
+                const labelW = hexR * 1.32;
+                const labelH = hexR * 0.62;
+                el.select(".hex-label-fo")
+                    .attr("x", -labelW / 2).attr("y", hexR * 0.20)
+                    .attr("width", labelW).attr("height", labelH)
+                    .style("overflow", "visible").style("pointer-events", "none");
 
-                        const hexR = val * 2.5;
-                        const labelW = hexR * 1.4;
-                        const labelH = hexR * 0.8;
-                        const labelY = hexR * 0.25;
-                        el.select(".hex-label-fo")
-                            .attr("x", -labelW / 2).attr("y", labelY)
-                            .attr("width", labelW).attr("height", labelH)
-                            .style("overflow", "visible").style("pointer-events", "none");
-                        el.select(".hex-label-div")
-                            .style("width", `${labelW}px`).style("height", `${labelH}px`)
-                            .style("display", "flex").style("align-items", "center")
-                            .style("justify-content", "center").style("text-align", "center")
-                            .style("font-family", "Inter, system-ui, sans-serif")
-                            .style("font-size", `${Math.min(15, val * 0.28)}px`)
-                            .style("font-weight", "600").style("color", "#1e293b")
-                            .style("line-height", "1.2").style("word-break", "break-word")
-                            .style("overflow-wrap", "break-word").style("white-space", "normal")
-                            .style("padding", "0 4px").style("box-sizing", "border-box")
-                            .text(d.name);
-                        el.select(".label-main").text("");
-                    }
-                } else {
-                    el.select(".orbit").attr("r", val * 2.5);
-                }
-            } else if (isField) {
-                if (d.isSearchDummy) {
-                    el.select(".search-dummy-orbit").attr("r", 90).attr("fill", "#6366f1").attr("fill-opacity", 0.12)
-                        .attr("stroke", "#6366f1").attr("stroke-width", 2).attr("stroke-dasharray", "6 3");
-                    el.select(".search-dummy-core").attr("r", 72).attr("fill", "#6366f1").attr("fill-opacity", 0.18);
-                    el.select(".search-dummy-fo").attr("x", -72).attr("y", -72).attr("width", 144).attr("height", 144);
-                    el.select(".search-dummy-label")
-                        .style("width", "144px").style("height", "144px")
-                        .style("display", "flex").style("flex-direction", "column")
-                        .style("align-items", "center").style("justify-content", "center")
-                        .style("text-align", "center").style("font-family", "Inter, system-ui, sans-serif")
-                        .style("padding", "8px").style("box-sizing", "border-box")
-                        .html(`<div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#6366f1;margin-bottom:4px;">Search</div><div style="font-size:13px;font-weight:700;color:#1e293b;line-height:1.3;word-break:break-word;">${d.name || d.title || ''}</div>`);
-                } else {
-                    const w = d._w || 80;
-                    const h = d._h || 50;
-                    const nodeTypeColors = { core: '#6366f1', foundation: '#10b981', impact: '#f59e0b' };
-                    const cardColor = (isSearch && d.nodeType && nodeTypeColors[d.nodeType])
-                        ? nodeTypeColors[d.nodeType] : cScale(d.xGroup || d.field);
+                el.select(".hex-label-div")
+                    .style("width", `${labelW}px`).style("height", `${labelH}px`)
+                    .style("display", "flex").style("flex-direction", "column")
+                    .style("align-items", "center").style("justify-content", "flex-start")
+                    .style("text-align", "center")
+                    .style("font-family", "Inter, system-ui, sans-serif")
+                    .style("color", "#1e293b").style("line-height", "1.25")
+                    .style("word-break", "break-word").style("overflow-wrap", "break-word")
+                    .style("padding", "0 6px").style("box-sizing", "border-box")
+                    .html(
+                        `<div style="font-size:17px;font-weight:700;">${d.name}</div>` +
+                        `<div style="font-size:12px;font-weight:500;color:#475569;margin-top:4px;">` +
+                        `${d.claimCount} claims · ${d.researchedClaimCount} researched</div>` +
+                        `<div style="font-size:11px;color:#64748b;margin-top:2px;">` +
+                        `~${(d.openAlexCount || 0).toLocaleString()} papers published</div>`
+                    );
+                el.select(".label-main").text("");
+            } else if (isEvidence) {
+                const w = d._w || 80;
+                const h = d._h || 50;
+                const cardColor = STANCE_COLORS[d.stance] || STANCE_COLORS.unevaluated;
 
-                    el.select(".node-paper-bg").attr("x", -w / 2).attr("y", -h / 2).attr("width", w).attr("height", h);
-                    el.select(".node-paper-card").attr("x", -w / 2).attr("y", -h / 2).attr("width", w).attr("height", h)
-                        .attr("fill", cardColor).attr("fill-opacity", 0.2)
-                        .style("stroke", cardColor).style("stroke-width", 2);
-                    el.select(".node-fo-wrapper").attr("x", -w / 2).attr("y", -h / 2).attr("width", w).attr("height", h);
-                    el.select(".node-paper-title")
-                        .style("font-size", `${Math.min(12, Math.max(9, w / 12))}px`)
-                        .style("width", "100%").style("word-wrap", "break-word")
-                        .style("white-space", "normal").style("text-align", "center")
-                        .style("overflow-wrap", "anywhere");
-                }
+                el.select(".node-paper-bg").attr("x", -w / 2).attr("y", -h / 2).attr("width", w).attr("height", h);
+                el.select(".node-paper-card").attr("x", -w / 2).attr("y", -h / 2).attr("width", w).attr("height", h)
+                    .attr("fill", cardColor).attr("fill-opacity", 0.2)
+                    .style("stroke", cardColor).style("stroke-width", 2);
+                el.select(".node-fo-wrapper").attr("x", -w / 2).attr("y", -h / 2).attr("width", w).attr("height", h);
+                el.select(".node-paper-title")
+                    .style("font-size", `${Math.min(12, Math.max(9, w / 12))}px`)
+                    .style("width", "100%").style("word-wrap", "break-word")
+                    .style("white-space", "normal").style("text-align", "center")
+                    .style("overflow-wrap", "anywhere");
             }
         });
 
-        if ((isUniverse || isGalaxy || isField) && layoutMode === 'TIMELINE') {
-            let xAxisScale = null;
-            if (isUniverse) {
-                xAxisScale = scales.universeXScale;
-            } else if (isGalaxy) {
-                const minYear = d3.min(currentNodes, d => d.minYear) || 1990;
-                const maxYear = d3.max(currentNodes, d => d.maxYear || d.minYear) || 2025;
-                const padding = width * 0.05;
-                const effectiveWidth = width - (padding * 2);
-                xAxisScale = d3.scaleLinear().domain([minYear, maxYear]).range([-effectiveWidth / 2, effectiveWidth / 2]);
-            } else if (isField) {
-                const minYear = d3.min(currentNodes, d => d.year) || 1990;
-                const maxYear = d3.max(currentNodes, d => d.year) || 2025;
-                xAxisScale = d3.scaleLinear().domain([minYear, maxYear]).range([-width * 0.8, width * 0.8]);
+        // ── Axes & guides ────────────────────────────────────────────────────
+        gAxisLayer.selectAll("*").remove();
+        gAxisLayer.style("opacity", 1);
+
+        const axisLabel = (x, y, text, anchor = "middle", size = 12, weight = 600) =>
+            gAxisLayer.append("text")
+                .attr("x", x).attr("y", y).attr("text-anchor", anchor)
+                .style("font-family", "Inter, system-ui, sans-serif")
+                .style("font-size", `${size}px`).style("font-weight", weight)
+                .style("fill", "#94a3b8").style("pointer-events", "none")
+                .text(text);
+
+        if (isClaims && layoutEngine.current.claimsFrame) {
+            const f = layoutEngine.current.claimsFrame;
+            const left = -f.plotW / 2, right = f.plotW / 2;
+            const top = f.plotCY - f.plotH / 2, bottom = f.plotCY + f.plotH / 2;
+
+            if (f.hasPlot) {
+                // Quadrant crosshair: vertical at "contested", horizontal at mid quality.
+                gAxisLayer.append("line")
+                    .attr("x1", 0).attr("x2", 0).attr("y1", top - 30).attr("y2", bottom + 30)
+                    .attr("stroke", "#cbd5e1").attr("stroke-width", 1).attr("stroke-dasharray", "4 4");
+                gAxisLayer.append("line")
+                    .attr("x1", left - 30).attr("x2", right + 30)
+                    .attr("y1", f.plotCY).attr("y2", f.plotCY)
+                    .attr("stroke", "#cbd5e1").attr("stroke-width", 1).attr("stroke-dasharray", "4 4");
+
+                axisLabel(left - 40, f.plotCY - 10, "REFUTED", "end", 11);
+                axisLabel(right + 40, f.plotCY - 10, "SUPPORTED", "start", 11);
+                axisLabel(0, top - 44, "STRONGER STUDIES", "middle", 11);
+                axisLabel(0, bottom + 52, "WEAKER STUDIES", "middle", 11);
+                axisLabel(0, top - 78, "How true is this claim?  →  left to right", "middle", 13, 500);
             }
 
-            if (xAxisScale) {
-                const axisBottom = d3.axisBottom(xAxisScale).tickFormat(d3.format("d")).ticks(10);
-                const yExtent = d3.extent(currentNodes, d => d.y);
-                const lowestY = (yExtent[1] !== undefined && !isNaN(yExtent[1])) ? yExtent[1] : (height / 2 - 40);
-                const axisY = isUniverse ? (height / 2 - 40) : (lowestY + 60);
-                gAxisLayer.attr("transform", `translate(0, ${axisY})`).style("opacity", 1).call(axisBottom);
-                gAxisLayer.selectAll("text").style("fill", "#64748b").style("font-size", "18px");
-                gAxisLayer.selectAll("line").style("stroke", "#cbd5e1");
-                gAxisLayer.selectAll("path").style("stroke", "#cbd5e1");
+            if (f.shelfTop !== null) {
+                const shelfY = f.shelfTop - 130;
+                gAxisLayer.append("line")
+                    .attr("x1", left - 60).attr("x2", right + 60)
+                    .attr("y1", shelfY).attr("y2", shelfY)
+                    .attr("stroke", "#e2e8f0").attr("stroke-width", 1.5);
+                axisLabel(left - 60, shelfY - 14, "NOT YET ASSESSED — sized by how much has been published",
+                          "start", 12, 600);
             }
+        } else if (isEvidence && layoutEngine.current.evidenceFrame) {
+            const f = layoutEngine.current.evidenceFrame;
+            const left = -f.plotW / 2, right = f.plotW / 2;
+
+            gAxisLayer.append("line")
+                .attr("x1", left - 40).attr("x2", right + 40)
+                .attr("y1", f.axisY).attr("y2", f.axisY)
+                .attr("stroke", "#cbd5e1").attr("stroke-width", 1.5);
+
+            // Year ticks, thinned so labels never collide.
+            const span = f.maxYear - f.minYear;
+            const stepYears = span > 60 ? 10 : span > 30 ? 5 : span > 12 ? 2 : 1;
+            const firstTick = Math.ceil(f.minYear / stepYears) * stepYears;
+            for (let y = firstTick; y <= f.maxYear; y += stepYears) {
+                const x = f.xScale(y);
+                gAxisLayer.append("line")
+                    .attr("x1", x).attr("x2", x)
+                    .attr("y1", f.axisY - 5).attr("y2", f.axisY + 5)
+                    .attr("stroke", "#cbd5e1").attr("stroke-width", 1);
+                axisLabel(x, f.axisY + 22, String(y), "middle", 11, 500);
+            }
+
+            axisLabel(left - 50, f.axisY - 60, "SUPPORTS", "end", 12);
+            axisLabel(left - 50, f.axisY + 70, "REFUTES", "end", 12);
+            axisLabel(0, f.axisY + 46, "publication year  →", "middle", 12, 500);
         } else {
             gAxisLayer.style("opacity", 0);
         }
 
-        if (prevViewMode.current !== viewMode && (viewMode === 'GALAXY' || viewMode === 'FIELD' || viewMode === 'SEARCH')) {
+        if (prevViewMode.current !== viewMode && (isClaims || isEvidence)) {
             gNodes.style("opacity", 1);
             allNodes.attr("transform", d => `translate(${d.x}, ${d.y}) scale(0)`);
 
@@ -744,42 +604,26 @@ export const Graph = ({
             gLinks.style("opacity", 1);
             allLinks.attr("stroke-opacity", 0.6);
 
-            if (viewMode === 'SEARCH' && currentNodes.length > 1) {
+            // Fit the tessellated hex cluster whenever we land on Topics —
+            // not just on first paint, or coming back from Claims would keep
+            // the previous view's zoom. Extents are padded by the hex radius
+            // because d.x/d.y are centres, and half a hexagon sticks out past
+            // each edge node.
+            if (isTopics && currentNodes.length) {
+                const hexR = currentNodes[0].hexR || 190;
                 const xExtent = d3.extent(currentNodes, d => d.x);
                 const yExtent = d3.extent(currentNodes, d => d.y);
-                const padding = 150;
-                if (xExtent[0] !== undefined && yExtent[0] !== undefined) {
-                    const gw = xExtent[1] - xExtent[0];
-                    const gh = yExtent[1] - yExtent[0];
-                    const scale = Math.min(width / (gw + padding * 2), height / (gh + padding * 2), 2);
-                    const cx = (xExtent[0] + xExtent[1]) / 2;
-                    const cy = (yExtent[0] + yExtent[1]) / 2;
-                    svg.transition().duration(800).call(zoom.transform, d3.zoomIdentity.translate(width / 2, height / 2).scale(scale).translate(-cx, -cy));
-                }
-            }
-
-            if (isHome) {
-                // Center (0,0) in the viewport so the two ±spacing nodes are symmetrical
-                svg.call(zoom.transform, d3.zoomIdentity.translate(width / 2, height / 2).scale(1));
-            }
-
-            if ((viewMode === 'UNIVERSE' || viewMode === 'FOOD_GALAXY') && layoutMode === 'CENTRAL' && (firstDataRenderRef.current || prevLayoutMode.current !== layoutMode)) {
-                const layoutNodes = currentNodes.filter(n => !n.isMenuNode);
-                const xExtent = d3.extent(layoutNodes, d => d.x);
-                const yExtent = d3.extent(layoutNodes, d => d.y);
-                const padding = 100;
-                if (xExtent[0] !== undefined && yExtent[0] !== undefined) {
-                    const gw = xExtent[1] - xExtent[0];
-                    const gh = yExtent[1] - yExtent[0];
-                    const scale = Math.min(width / (gw + padding * 2), height / (gh + padding * 2), 2);
-                    const cx = (xExtent[0] + xExtent[1]) / 2;
-                    const cy = (yExtent[0] + yExtent[1]) / 2;
-                    if (firstDataRenderRef.current) {
-                        svg.call(zoom.transform, d3.zoomIdentity.translate(width / 2, height / 2).scale(scale).translate(-cx, -cy));
-                    } else {
-                        svg.transition().duration(1000).call(zoom.transform, d3.zoomIdentity.translate(width / 2, height / 2).scale(scale).translate(-cx, -cy));
-                    }
-                }
+                const padding = hexR + 70;
+                const gw = (xExtent[1] - xExtent[0]) + hexR * 2;
+                const gh = (yExtent[1] - yExtent[0]) + hexR * 2;
+                const scale = Math.min(
+                    width / (gw + padding), height / (gh + padding), 1.4);
+                const cx = (xExtent[0] + xExtent[1]) / 2;
+                const cy = (yExtent[0] + yExtent[1]) / 2;
+                const target = d3.zoomIdentity
+                    .translate(width / 2, height / 2).scale(scale).translate(-cx, -cy);
+                if (firstDataRenderRef.current) svg.call(zoom.transform, target);
+                else svg.transition().duration(700).call(zoom.transform, target);
             }
         }
 
@@ -796,110 +640,92 @@ export const Graph = ({
     useEffect(() => {
         if (!svgRef.current) return;
         const svg = d3.select(svgRef.current);
-        const isGalaxy = viewMode === 'GALAXY';
-        const isField = viewMode === 'FIELD';
-        const isDetail = viewMode === 'DETAIL';
-        const isSearch = viewMode === 'SEARCH';
-        const isUniverseTimeline = viewMode === 'UNIVERSE' && layoutMode === 'TIMELINE';
-        const isUniverseCentral = viewMode === 'UNIVERSE' && layoutMode === 'CENTRAL';
+        const isClaims = viewMode === 'CLAIMS';
+        const isEvidence = viewMode === 'EVIDENCE';
+        const isTopics = viewMode === 'TOPICS';
 
-        if (isGalaxy || isField || isDetail || isSearch || isUniverseTimeline || isUniverseCentral) {
-            const gLinks = svg.select(".g-links");
-            const gNodes = svg.select(".g-nodes");
-            const currentEdges = edges;
+        const gLinks = svg.select(".g-links");
+        const gNodes = svg.select(".g-nodes");
 
-            const focusNode = hovered || ((isField || isDetail || isSearch) && selected && !isReturning ? selected : null);
-            const isHovering = !!hovered;
+        // On the evidence view a click pins a paper; elsewhere only hover focuses.
+        const focusNode = hovered || (isEvidence && selected && !isReturning ? selected : null);
+        const isHovering = !!hovered;
 
-            if (focusNode) {
-                const connectedEdgeIds = new Set();
-                const connectedNodeIds = new Set();
-                connectedNodeIds.add(focusNode.id);
+        if (focusNode) {
+            const connectedEdgeIds = new Set();
+            const connectedNodeIds = new Set([focusNode.id]);
 
-                if (isGalaxy || isField || isDetail || isSearch) {
-                    const prefix = (isField || isDetail || isSearch) ? "P" : "G";
-                    const keyFn = (s, t) => `${prefix}|${s}|${t}`;
-                    currentEdges.forEach(e => {
-                        const sId = (e.source && e.source.id) ? e.source.id : e.source;
-                        const tId = (e.target && e.target.id) ? e.target.id : e.target;
-                        if (sId === focusNode.id || tId === focusNode.id) {
-                            connectedEdgeIds.add(keyFn(sId, tId));
-                            connectedNodeIds.add(sId);
-                            connectedNodeIds.add(tId);
-                        }
-                    });
+            edges.forEach(e => {
+                const sId = e.source?.id ?? e.source;
+                const tId = e.target?.id ?? e.target;
+                if (sId === focusNode.id || tId === focusNode.id) {
+                    connectedEdgeIds.add(`${sId}|${tId}`);
+                    connectedNodeIds.add(sId);
+                    connectedNodeIds.add(tId);
                 }
+            });
 
-                if (isGalaxy || isField || isDetail || isSearch) {
-                    const prefix = (isField || isDetail || isSearch) ? "P" : "G";
-                    gLinks.selectAll(".d3-link")
-                        .transition("highlight").duration(200)
-                        .attr("stroke-opacity", function () {
-                            if (isField || isDetail || isSearch) return null;
-                            const d = d3.select(this).datum();
-                            const s = (d.source.id || d.source);
-                            const t = (d.target.id || d.target);
-                            const key = `${prefix}|${s}|${t}`;
-                            return connectedEdgeIds.has(key) ? 0.8 : 0.05;
-                        })
-                        .style("opacity", function () {
-                            if (!isField && !isDetail && !isSearch) return null;
-                            const d = d3.select(this).datum();
-                            const s = (d.source.id || d.source);
-                            const t = (d.target.id || d.target);
-                            const key = `${prefix}|${s}|${t}`;
-                            if (isDetail || isSearch) return connectedEdgeIds.has(key) ? 1 : 0;
-                            if (isField && selected) {
-                                const isConnectedToSelected = s === selected.id || t === selected.id;
-                                if (!isConnectedToSelected) return 0;
-                                if (isHovering && !connectedEdgeIds.has(key)) return 0.2;
-                                return 1;
-                            }
-                            if (isField && isHovering) return connectedEdgeIds.has(key) ? 1 : 0.05;
-                            return connectedEdgeIds.has(key) ? 1 : 0;
-                        })
-                        .attr("stroke-width", function () {
-                            const d = d3.select(this).datum();
-                            const s = (d.source.id || d.source);
-                            const t = (d.target.id || d.target);
-                            const key = `${prefix}|${s}|${t}`;
-                            const weight = d.weight || 1;
-                            return connectedEdgeIds.has(key) ? Math.max(2, Math.sqrt(weight) + 1) : Math.max(1, Math.sqrt(weight));
-                        });
-                }
-
-                gNodes.selectAll(".d3-node")
-                    .classed("node-shimmer", d => d.id === focusNode.id && isHovering)
+            if (isEvidence) {
+                gLinks.selectAll(".d3-link")
                     .transition("highlight").duration(200)
                     .style("opacity", function () {
                         const d = d3.select(this).datum();
-                        if (d.id === focusNode.id) return 1;
-                        if (d.isSearchDummy) return 1;
-                        if (isGalaxy || isField || isSearch) {
-                            if (connectedNodeIds.has(d.id)) return 1;
-                            return ((isField || isSearch) && selected && !isHovering) ? 0 : 0.1;
-                        }
-                        if (isDetail) return connectedNodeIds.has(d.id) ? 1 : 0.02;
-                        return 1;
+                        const key = `${d.source.id || d.source}|${d.target.id || d.target}`;
+                        return connectedEdgeIds.has(key) ? 1 : 0.05;
+                    })
+                    .attr("stroke-width", function () {
+                        const d = d3.select(this).datum();
+                        const key = `${d.source.id || d.source}|${d.target.id || d.target}`;
+                        const weight = d.weight || 1;
+                        return connectedEdgeIds.has(key)
+                            ? Math.max(2, Math.sqrt(weight) + 1)
+                            : Math.max(1, Math.sqrt(weight));
                     });
-            } else {
-                if (isGalaxy || isField) {
-                    gLinks.selectAll(".d3-link").transition("highlight").duration(200)
-                        .attr("stroke-opacity", isField ? null : 0.6)
-                        .style("opacity", isField ? 1 : null)
-                        .attr("stroke-width", function () {
-                            const d = d3.select(this).datum();
-                            return Math.max(1, Math.sqrt(d.weight || 1));
-                        });
-                } else if (isDetail || isSearch) {
-                    gLinks.selectAll(".d3-link").transition("highlight").duration(200)
-                        .style("opacity", isSearch ? 0.5 : 0).attr("stroke-opacity", null);
-                }
-                gNodes.selectAll(".d3-node").classed("node-shimmer", false)
-                    .transition("highlight").duration(200).style("opacity", 1);
             }
+
+            // Topics and claims emphasise in place. No transform changes here -
+            // moving a node under the cursor makes the map feel unstable.
+            if (isTopics || isClaims) {
+                gNodes.selectAll(".d3-node").each(function (d) {
+                    const isFocus = d.id === focusNode.id;
+                    d3.select(this).select(isTopics ? ".orbit" : ".core")
+                        .transition("focus-ring").duration(150)
+                        .attr("stroke", isFocus ? "#1e293b" : (isTopics ? "none" : "#ffffff"))
+                        .attr("stroke-width", isFocus ? 2.5 : 2);
+                });
+            }
+
+            gNodes.selectAll(".d3-node")
+                .transition("highlight").duration(200)
+                .style("opacity", function () {
+                    const d = d3.select(this).datum();
+                    if (d.id === focusNode.id) return 1;
+                    if (isTopics || isClaims) return 0.35;
+                    if (connectedNodeIds.has(d.id)) return 1;
+                    return selected && !isHovering ? 0.08 : 0.15;
+                });
+        } else {
+            if (isEvidence) {
+                gLinks.selectAll(".d3-link").transition("highlight").duration(200)
+                    .style("opacity", 1)
+                    .attr("stroke-width", function () {
+                        const d = d3.select(this).datum();
+                        return Math.max(1, Math.sqrt(d.weight || 1));
+                    });
+            }
+            if (isTopics || isClaims) {
+                gNodes.selectAll(".d3-node").each(function () {
+                    const el = d3.select(this);
+                    el.select(".orbit").transition("focus-ring").duration(150)
+                        .attr("stroke", "none").attr("stroke-width", 0);
+                    el.select(".core").transition("focus-ring").duration(150)
+                        .attr("stroke", "#ffffff").attr("stroke-width", 2);
+                });
+            }
+            gNodes.selectAll(".d3-node")
+                .transition("highlight").duration(200).style("opacity", 1);
         }
-    }, [hovered, selected, viewMode, edges, layoutMode, isReturning]);
+    }, [hovered, selected, viewMode, edges, isReturning]);
 
     return <svg ref={svgRef} className="galaxy-canvas" width={width} height={height} />;
 };
