@@ -89,6 +89,13 @@ export const Graph = ({
         if (isEvidence) {
             currentNodes.forEach(n => {
                 if (n.type === 'claim-anchor') return;   // drawn as a circle, not a card
+                if (n.stance === 'neutral') {
+                    // Uniform: these sit in the context box, where size would
+                    // imply a ranking as evidence they were excluded from.
+                    n._w = 132;
+                    n._h = 46;
+                    return;
+                }
                 const cites = n.citationCount || 0;
                 n._w = 80 + Math.sqrt(cites) * 3;
                 n._h = 50 + Math.sqrt(cites) * 1.5;
@@ -698,20 +705,21 @@ export const Graph = ({
             } else if (isEvidence) {
                 const w = d._w || 80;
                 const h = d._h || 50;
-                const cardColor = STANCE_COLORS[d.stance] || STANCE_COLORS.unevaluated;
-                // Neutral papers took no position, so they recede into a haze
-                // on the midline instead of competing with the decisive ones.
                 const isNeutral = d.stance === 'neutral';
+                // Context papers are flat grey. They no longer need dimming to
+                // stay out of the way - being outside the plot does that - and
+                // dimming only made the ones a reader might want to click hard
+                // to read.
+                const cardColor = isNeutral
+                    ? STANCE_COLORS.neutral
+                    : (STANCE_COLORS[d.stance] || STANCE_COLORS.unevaluated);
 
-                el.select(".node-paper-bg").attr("x", -w / 2).attr("y", -h / 2).attr("width", w).attr("height", h);
+                el.select(".node-paper-bg").attr("x", -w / 2).attr("y", -h / 2)
+                    .attr("width", w).attr("height", h).attr("fill-opacity", 1);
                 el.select(".node-paper-card").attr("x", -w / 2).attr("y", -h / 2).attr("width", w).attr("height", h)
-                    .attr("fill", cardColor).attr("fill-opacity", isNeutral ? 0.07 : 0.2)
-                    .style("stroke", cardColor).style("stroke-width", isNeutral ? 1 : 2)
-                    .style("stroke-opacity", isNeutral ? 0.45 : 1);
-                // Dim via the card's own fills, NOT via node opacity: the hover
-                // effect owns node opacity and resets it to 1, which would undo
-                // any dimming set here the first time the cursor moves.
-                el.select(".node-paper-bg").attr("fill-opacity", isNeutral ? 0.55 : 1);
+                    .attr("fill", cardColor).attr("fill-opacity", isNeutral ? 0.14 : 0.2)
+                    .style("stroke", cardColor).style("stroke-width", isNeutral ? 1.25 : 2)
+                    .style("stroke-opacity", 1);
                 el.select(".node-fo-wrapper").attr("x", -w / 2).attr("y", -h / 2).attr("width", w).attr("height", h);
                 el.select(".node-paper-title")
                     .style("font-size", `${Math.min(12, Math.max(9, w / 12))}px`)
@@ -902,7 +910,37 @@ export const Graph = ({
                 axisLabel(0, bottom + 52, "strength of the study  →", "middle", 12, 500);
             }
 
-            axisLabel(left - 10, f.plotCY - 8, "no signal", "end", 10, 500);
+            // The context box: drawn as a container so the papers inside it read
+            // as set aside from the verdict rather than as a cluster within it.
+            if (f.neutralBox) {
+                const b = f.neutralBox;
+                gAxisLayer.append("rect")
+                    .attr("x", b.x).attr("y", b.y)
+                    .attr("width", b.w).attr("height", b.h)
+                    .attr("rx", 12)
+                    .attr("fill", "#f8fafc")
+                    .attr("stroke", "#cbd5e1")
+                    .attr("stroke-width", 1.25)
+                    .attr("stroke-dasharray", "6 4");
+
+                gAxisLayer.append("text")
+                    .attr("x", b.x + 14).attr("y", b.y + 21)
+                    .style("font-family", "Inter, system-ui, sans-serif")
+                    .style("font-size", "10.5px").style("font-weight", 800)
+                    .style("letter-spacing", "0.07em")
+                    .style("fill", "#94a3b8").style("pointer-events", "none")
+                    .text(b.total > b.count
+                        ? `BACKGROUND · ${b.count} OF ${b.total}`
+                        : `BACKGROUND · ${b.count}`);
+
+                gAxisLayer.append("text")
+                    .attr("x", b.x + b.w / 2).attr("y", b.y + b.h + 18)
+                    .attr("text-anchor", "middle")
+                    .style("font-family", "Inter, system-ui, sans-serif")
+                    .style("font-size", "11px").style("font-weight", 500)
+                    .style("fill", "#b6c2d0").style("pointer-events", "none")
+                    .text("cited by the evidence, but does not test the claim");
+            }
         } else {
             gAxisLayer.style("opacity", 0);
         }

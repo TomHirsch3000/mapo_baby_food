@@ -181,12 +181,16 @@ export const AboutPanel = ({ open, onClose }) => {
                         <Dot colour={STANCE_COLORS.supports} label="supports the claim" />
                         <Dot colour={STANCE_COLORS.refutes} label="refutes it" />
                         <Dot colour={STANCE_COLORS.mixed} label="cuts both ways" />
-                        <Dot colour={STANCE_COLORS.neutral} label="doesn’t test it" />
+                        <Dot colour={STANCE_COLORS.neutral} label="background" />
                     </div>
                     <p style={{ margin: 0, fontSize: '0.85rem', color: '#64748b', lineHeight: 1.55 }}>
-                        Papers that don’t test the claim are mostly hidden to reduce clutter —
-                        a few are kept where the claim’s own literature cites them heavily.
-                        The count of what’s hidden is always shown.
+                        Grey <strong>background</strong> papers don’t test the claim, so they sit
+                        in their own box to the left rather than on the axes — they aren’t
+                        evidence for or against anything. They’re there because the papers that
+                        <em> do</em> test the claim cite them, which makes them the shared
+                        groundwork the argument rests on. Citation lines still run from the box
+                        into the studies that lean on it. Only the most-cited are shown, and the
+                        box says how many of the total that is.
                     </p>
                 </Section>
 

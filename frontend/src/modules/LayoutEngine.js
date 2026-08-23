@@ -265,7 +265,57 @@ export class LayoutEngine {
 
         const mixedSign = LayoutEngine.MIXED_SIGN[reading] ?? 0;
 
-        papers.forEach((n, i) => {
+        // Papers that take no position on the claim are not evidence for or
+        // against it, so they have no honest place on either axis - parked on
+        // the midline they read as "contested" and crowd the one part of the
+        // plot where a genuinely contested claim needs room. But they are not
+        // noise either: they are here because the papers that DO test the claim
+        // cite them, so they are the shared groundwork the argument stands on.
+        //
+        // They get a labelled box outside the plot, up and to the left, and the
+        // citation ribbons still run from the box into the papers that lean on
+        // it - which is the useful thing about them made visible.
+        const decisive = papers.filter(n => n.stance !== 'neutral');
+        const context = papers.filter(n => n.stance === 'neutral');
+
+        let neutralBox = null;
+        if (context.length) {
+            const cardW = 132, cardH = 46, pad = 14;
+            const cols = context.length > 4 ? 2 : 1;
+            const rows = Math.ceil(context.length / cols);
+            const boxW = cols * cardW + (cols + 1) * pad;
+            const boxH = rows * cardH + (rows + 1) * pad + 20;   // +20 for the caption
+            const right = -plotW / 2 - 64;                        // clear of the plot edge
+            const top = plotCY - plotH / 2;                       // aligned with the plot top
+
+            // The box must not reach the midline: the axis crosshair and its
+            // "WEAKER" label live there, and a panel painted over them would
+            // hide the orientation the whole plot depends on.
+            neutralBox = {
+                x: right - boxW, y: top, w: boxW, h: boxH,
+                count: context.length,
+                // Only the best-connected context papers are shown; say so
+                // rather than implying this is all of them.
+                total: anchor && anchor.neutral != null ? anchor.neutral : context.length,
+            };
+
+            context
+                .sort((a, b) => (b.localCitations || 0) - (a.localCitations || 0))
+                .forEach((n, i) => {
+                    const col = i % cols;
+                    const row = Math.floor(i / cols);
+                    n._targetX = neutralBox.x + pad + col * (cardW + pad) + cardW / 2;
+                    n._targetY = neutralBox.y + 20 + pad + row * (cardH + pad) + cardH / 2;
+                    // Pinned: the simulation must not drag context back over the
+                    // plot, and a fixed node still pushes papers out of the box.
+                    n.x = n.fx = n._targetX;
+                    n.y = n.fy = n._targetY;
+                    n._inBox = true;
+                    n._dim = false;
+                });
+        }
+
+        decisive.forEach((n, i) => {
             const sign = n.stance === 'mixed'
                 ? mixedSign
                 : (LayoutEngine.STANCE_SIGN[n.stance] ?? 0);
@@ -274,16 +324,12 @@ export class LayoutEngine {
 
             n._targetX = xValueOf(n) + spread * jitterSpan * 2;
 
-            if (sign === 0) {
-                // No net direction to plot - either the paper took no position
-                // at all, or this reading declines to pick a side for it. Either
-                // way it sits on the midline rather than implying "contested".
-                n._targetY = plotCY + spread * 46;
-                n._dim = n.stance !== 'mixed';   // mixed stays legible, it matters
-            } else {
-                n._targetY = plotCY + yScale(sign * certainty);
-                n._dim = false;
-            }
+            // A mixed paper under the balanced reading has no net direction, so
+            // it sits on the midline - which for it is the honest answer, not an
+            // absence of one.
+            n._targetY = plotCY + yScale(sign * certainty);
+            n._dim = false;
+            n._inBox = false;
 
             n.x = n._targetX;
             n.y = n._targetY;
@@ -309,7 +355,7 @@ export class LayoutEngine {
 
         this.evidenceFrame = {
             minYear, maxYear, plotW, plotH, plotCY,
-            xAxisMode, reading, yScale,
+            xAxisMode, reading, yScale, neutralBox,
             xScale: useYear ? yearScale : strengthScale,
             strengthLevels: Object.entries(LayoutEngine.STRENGTH_X)
                 .map(([key, v]) => ({ key, x: strengthScale(v) })),
@@ -317,8 +363,8 @@ export class LayoutEngine {
 
         sim.force("center", null)
             .force("link", d3.forceLink(safeEdges).id(d => d.id).strength(0))
-            .force("x", d3.forceX(d => d._targetX).strength(0.9))
-            .force("y", d3.forceY(d => d._targetY).strength(d => d._dim ? 0.5 : 0.85))
+            .force("x", d3.forceX(d => d._targetX).strength(d => d._inBox ? 0 : 0.9))
+            .force("y", d3.forceY(d => d._targetY).strength(d => d._inBox ? 0 : 0.85))
             .force("charge", d3.forceManyBody().strength(-60))
             .force("collide", d3.forceCollide()
                 .radius(d => d.type === 'claim-anchor'
