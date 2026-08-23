@@ -30,7 +30,9 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          # 22+: jsdom's bundled undici calls webidl.util.markAsUncloneable,
+          # which does not exist on Node 20, so the smoke test cannot even load.
+          node-version: 22
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
