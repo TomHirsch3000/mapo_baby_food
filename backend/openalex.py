@@ -9,7 +9,7 @@ Public surface:
     BudgetExhaustedError    raised when the daily credit budget is gone
     get_with_retry(url, params)
     count_works(query, filters=None)
-    fetch_works(query, max_results, filters=None, select=None)
+    fetch_works(query, max_results, filters=None, select=None, with_count=False)
     reconstruct_abstract(inverted_index)
     parse_authorships(work)
 """
@@ -147,8 +147,16 @@ def count_works(query, extra_filters=None):
         return 0
 
 
-def fetch_works(query, max_results=200, extra_filters=None, select=None, quiet=False):
-    """Cursor-paginated fetch from /works. Returns at most max_results raw works."""
+def fetch_works(query, max_results=200, extra_filters=None, select=None, quiet=False,
+                with_count=False):
+    """Cursor-paginated fetch from /works. Returns at most max_results raw works.
+
+    with_count returns (works, total_matches) instead. Every response already
+    carries meta.count, and requests are billed at a flat 10 credits each
+    regardless of how many rows they return, so reading the total off this
+    response is free -- a separate count_works() call would double the cost of
+    an import for one integer.
+    """
     params = {
         "search": query,
         "filter": _build_filter(extra_filters),
@@ -158,9 +166,11 @@ def fetch_works(query, max_results=200, extra_filters=None, select=None, quiet=F
     }
 
     fetched = []
+    total = 0
     while len(fetched) < max_results:
         resp = get_with_retry(f"{OPENALEX_BASE}/works", params)
         data = resp.json()
+        total = data.get("meta", {}).get("count", total)
         results = data.get("results", [])
         if not results:
             break
@@ -175,7 +185,8 @@ def fetch_works(query, max_results=200, extra_filters=None, select=None, quiet=F
 
     if not quiet:
         print(f"  Fetched {len(fetched)} papers total.   ")
-    return fetched[:max_results]
+    works = fetched[:max_results]
+    return (works, total) if with_count else works
 
 
 def reconstruct_abstract(inverted_index):

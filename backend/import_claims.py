@@ -61,11 +61,13 @@ def create_db(db_path=DB_PATH):
             claim_key       TEXT,
             paperId         TEXT,
             keyword_score   INTEGER DEFAULT 0,
-            stance          TEXT,           -- supports | refutes | neutral
+            stance          TEXT,           -- supports | refutes | neutral | mixed
             confidence      INTEGER,        -- 0-100
             stance_summary  TEXT,
             evidence_strength TEXT,         -- strong | moderate | limited | mixed
             study_type      TEXT,
+            finding         TEXT,           -- the model's restatement of the result
+            direction       TEXT,           -- agrees | disagrees | both | does not test it
             evaluated_at    TEXT,
             PRIMARY KEY (claim_key, paperId)
         );
@@ -187,10 +189,13 @@ def import_claim(conn, claim_key, max_results=200, min_keyword_score=1):
     print(f"        \"{cfg['claim']}\"")
     print(f"        query: {cfg['query']}")
 
-    total = oa.count_works(cfg["query"])
+    # One request, not two: the fetch response carries meta.count, and OpenAlex
+    # bills a flat 10 credits per request whatever it returns. A separate
+    # count_works() call here used to cost exactly as much as the fetch itself,
+    # halving how many claims a day's budget could import.
+    works, total = oa.fetch_works(cfg["query"], max_results=max_results,
+                                  with_count=True)
     print(f"        {total:,} works in OpenAlex")
-
-    works = oa.fetch_works(cfg["query"], max_results=max_results)
 
     known_before = {r[0] for r in conn.execute("SELECT paperId FROM papers").fetchall()}
     linked = skipped = new_papers = 0
@@ -264,6 +269,9 @@ def main():
                         help="minimum keyword hints required to keep a paper")
     parser.add_argument("--db", default=DB_PATH)
     parser.add_argument("--list", action="store_true", help="list claims and exit")
+    parser.add_argument("--skip-done", action="store_true",
+                        help="skip claims that already have papers (resume a "
+                             "budget-interrupted run without re-paying for them)")
     args = parser.parse_args()
 
     if args.list:
@@ -290,6 +298,19 @@ def main():
             print(f"\n[stop] {e}")
         finally:
             conn.close()
+        return
+
+    if args.skip_done:
+        already = {r[0] for r in conn.execute(
+            "SELECT DISTINCT claim_key FROM claim_papers").fetchall()}
+        skipped = [k for k in keys if k in already]
+        keys = [k for k in keys if k not in already]
+        if skipped:
+            print(f"Skipping {len(skipped)} claim(s) already imported.")
+
+    if not keys:
+        print("Nothing to import - every selected claim already has papers.")
+        conn.close()
         return
 
     print(f"Importing {len(keys)} claim(s) into {args.db}")
