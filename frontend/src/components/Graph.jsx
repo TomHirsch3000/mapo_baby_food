@@ -157,15 +157,6 @@ export const Graph = ({
             layoutEngine.current.applyTopicsLayout(currentNodes, sim);
         }
 
-        const DRY_RUN_TICKS = (isClaims || isEvidence) ? 300 : 120;
-        sim.stop();
-        sim.alpha(1);
-        for (let i = 0; i < DRY_RUN_TICKS; ++i) {
-            sim.tick();
-        }
-
-        if (isClaims) resolveLabelOverlaps(currentNodes);
-
         /**
          * Push overlapping claim labels apart, vertically.
          *
@@ -216,6 +207,15 @@ export const Graph = ({
                     boxes.push({ left, right, top, bottom: top + h });
                 });
         };
+
+        const DRY_RUN_TICKS = (isClaims || isEvidence) ? 300 : 120;
+        sim.stop();
+        sim.alpha(1);
+        for (let i = 0; i < DRY_RUN_TICKS; ++i) {
+            sim.tick();
+        }
+
+        if (isClaims) resolveLabelOverlaps(currentNodes);
 
         const getEdgeKey = (d) => `${(isClaims || isEvidence) ? "G" : "P"}|${d.source.id || d.source}|${d.target.id || d.target}`;
         const getGradientId = (d) => `link-gradient-${sanitizeId(getEdgeKey(d))}`;
