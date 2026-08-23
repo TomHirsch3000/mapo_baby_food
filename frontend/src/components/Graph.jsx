@@ -542,11 +542,12 @@ export const Graph = ({
                 // strip of the plot for its caption and collide with everything
                 // either side of it.
                 const labelW = Math.max(180, Math.min(240, r * 3.2));
+                const labelH = 150;
                 d._labelW = labelW;
                 el.select(".galaxy-label-fo")
                     .attr("x", -labelW / 2)
                     .attr("y", d._labelDy != null ? d._labelDy : r + 10)
-                    .attr("width", labelW).attr("height", 150)
+                    .attr("width", labelW).attr("height", labelH)
                     .style("overflow", "visible").style("pointer-events", "none");
 
                 // Literature volume always shows - it is what sized the node.

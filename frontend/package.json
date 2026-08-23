@@ -10,11 +10,13 @@
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.3.4",
+    "jsdom": "^30.0.1",
     "vite": "^6.3.5"
   },
   "scripts": {
     "start": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "smoke": "esbuild scripts/smoke.mjs --bundle --outfile=scripts/smoke.bundle.mjs --format=esm --platform=node --packages=external --jsx=automatic --loader:.css=text --log-level=error && node scripts/smoke.bundle.mjs"
   }
 }
