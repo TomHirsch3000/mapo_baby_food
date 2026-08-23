@@ -16,7 +16,7 @@ interesting signal, and the UI shows both numbers.
 
 Claim node POSITION still comes from the evidence we do hold:
 
-    netSupport   -1 (refuted) .. +1 (supported); drives X POSITION
+    netSupport   -1 (refuted) .. +1 (supported); drives Y POSITION
     consensus    |netSupport|; 0 = contested, 1 = settled
     evidenceVolume  weighted evidence actually collected
 """
@@ -33,7 +33,7 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, SCRIPT_DIR)
 
 import console
-from claims import CLAIMS, TOPICS, claims_for_topic, groups_for_topic
+from claims import CLAIMS, TOPICS, claims_for_topic, groups_for_topic, tested_text
 
 console.init()
 
@@ -65,7 +65,8 @@ def claim_rows(conn, claim_key):
                p.cited_by_count, p.all_author_names, p.first_author_name,
                p.all_institution_names, p.venue, p.doi, p.url,
                cp.stance, cp.confidence, cp.stance_summary,
-               cp.evidence_strength, cp.study_type, cp.keyword_score
+               cp.evidence_strength, cp.study_type, cp.keyword_score,
+               cp.finding, cp.direction
         FROM claim_papers cp
         JOIN papers p USING(paperId)
         WHERE cp.claim_key = ?
@@ -77,13 +78,16 @@ def summarise_claim(conn, claim_key, rows, openalex_count):
     cfg = CLAIMS[claim_key]
     topic = TOPICS[cfg["topic"]]
 
-    counts = {"supports": 0, "refutes": 0, "neutral": 0, "unevaluated": 0}
-    weights = {"supports": 0.0, "refutes": 0.0, "neutral": 0.0}
+    counts = {"supports": 0, "refutes": 0, "neutral": 0, "mixed": 0, "unevaluated": 0}
+    weights = {"supports": 0.0, "refutes": 0.0, "neutral": 0.0, "mixed": 0.0}
     strength_mix = {"strong": 0, "moderate": 0, "limited": 0, "mixed": 0}
 
     for r in rows:
         stance = r["stance"]
-        if not stance:
+        # Anything outside the four real verdicts - empty, or a stray literal
+        # like "unevaluated" that a restore round-tripped back in - counts as
+        # not yet judged. An export must not die on one odd row.
+        if stance not in weights:
             counts["unevaluated"] += 1
             continue
         counts[stance] += 1
@@ -92,9 +96,30 @@ def summarise_claim(conn, claim_key, rows, openalex_count):
         if r["evidence_strength"] in strength_mix:
             strength_mix[r["evidence_strength"]] += 1
 
-    decisive = weights["supports"] + weights["refutes"]
-    net_support = (weights["supports"] - weights["refutes"]) / decisive if decisive else 0.0
-    evidence_volume = weights["supports"] + weights["refutes"] + 0.25 * weights["neutral"]
+    # A paper that cuts both ways has no single honest position on a
+    # supported/refuted axis, so the reader gets to choose how to read it. All
+    # three readings ship, and the UI switches between them:
+    #
+    #   conservative  the claim is technically supported, caveats notwithstanding
+    #                 -> mixed weight counts toward SUPPORTS
+    #   balanced      a two-sided paper takes no side
+    #                 -> mixed weight is set aside entirely
+    #   liberal       the caveats matter as much as the headline
+    #                 -> mixed weight counts toward REFUTES
+    #
+    # The spread between the three IS the signal: a claim that reads +0.6 or
+    # -0.1 depending on how you treat its mixed papers is not a settled claim.
+    def _net(sup, ref):
+        total = sup + ref
+        return (sup - ref) / total if total else 0.0
+
+    net_balanced = _net(weights["supports"], weights["refutes"])
+    net_conservative = _net(weights["supports"] + weights["mixed"], weights["refutes"])
+    net_liberal = _net(weights["supports"], weights["refutes"] + weights["mixed"])
+
+    net_support = net_balanced
+    evidence_volume = (weights["supports"] + weights["refutes"] + weights["mixed"]
+                       + 0.25 * weights["neutral"])
 
     # Mean study-design quality across every assessed paper, normalised to 0..1
     # (1.0 = all meta-analyses / large RCTs, 0.0 = all small cross-sectional).
@@ -112,6 +137,11 @@ def summarise_claim(conn, claim_key, rows, openalex_count):
     return {
         "id": claim_key,
         "claim": cfg["claim"],
+        # What a study can actually measure. Differs from the headline only for
+        # prescriptive claims; shown in the UI so the reader can see what was
+        # tested on their behalf without having to phrase it themselves.
+        "testedAs": tested_text(claim_key),
+        "isPrescriptive": bool(cfg.get("tested_as")),
         "topic": cfg["topic"],
         "topicName": topic["name"],
         "group": cfg["group"],
@@ -122,12 +152,16 @@ def summarise_claim(conn, claim_key, rows, openalex_count):
         "supports": counts["supports"],
         "refutes": counts["refutes"],
         "neutral": counts["neutral"],
+        "mixed": counts["mixed"],
         "unevaluated": counts["unevaluated"],
         "strengthMix": strength_mix,
         "hasEvidence": len(rows) > 0,
         # geometry
         "openAlexCount": openalex_count,                    # node SIZE
-        "netSupport": round(net_support, 3),                # X axis
+        "netSupport": round(net_support, 3),                # Y axis (balanced)
+        "netSupportConservative": round(net_conservative, 3),
+        "netSupportBalanced": round(net_balanced, 3),
+        "netSupportLiberal": round(net_liberal, 3),
         "evidenceQuality": round(max(0.0, min(1.0, evidence_quality)), 3),  # Y axis
         "evidenceVolume": round(evidence_volume, 2),
         "consensus": round(abs(net_support), 3),
@@ -153,6 +187,11 @@ def build_paper_node(row):
         "stanceSummary": row["stance_summary"] or "",
         "evidenceStrength": row["evidence_strength"] or "",
         "studyType": row["study_type"] or "",
+        # The model's own restatement of the result, and the agree/disagree call
+        # it made before picking a stance. Surfaced so a reader can see WHY a
+        # badge says what it says, and catch it when the two disagree.
+        "finding": (row["finding"] if "finding" in row.keys() else "") or "",
+        "direction": (row["direction"] if "direction" in row.keys() else "") or "",
         "weight": round(paper_weight(row["evidence_strength"], row["cited_by_count"],
                                      row["confidence"]), 2),
     }
@@ -216,7 +255,8 @@ def build(db_path=DB_PATH, out_dir=OUT_DIR, clean=False):
                       f"{summary['openAlexCount']:>8,d} matching  "
                       f"{summary['paperCount']:>4d} held  "
                       f"S{summary['supports']:<3d} R{summary['refutes']:<3d} "
-                      f"N{summary['neutral']:<3d}  net {summary['netSupport']:+.2f}"
+                      f"M{summary['mixed']:<3d} N{summary['neutral']:<3d}  "
+                      f"net {summary['netSupport']:+.2f}"
                       f"{flag}")
 
             summaries.sort(key=lambda s: -s["openAlexCount"])
@@ -252,6 +292,7 @@ def build(db_path=DB_PATH, out_dir=OUT_DIR, clean=False):
                 "supports": supports,
                 "refutes": refutes,
                 "neutral": sum(s["neutral"] for s in summaries),
+                "mixed": sum(s["mixed"] for s in summaries),
                 "netSupport": round((supports - refutes) / decisive, 3) if decisive else 0.0,
                 "evidenceVolume": round(sum(s["evidenceVolume"] for s in summaries), 2),
                 "iconPath": f"images/topics/{topic_key}.jpg",

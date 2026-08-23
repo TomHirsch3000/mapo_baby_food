@@ -14,6 +14,7 @@ run still yields the most useful evidence.
 Usage:
     python backend/evaluate_claims.py --seed
     python backend/evaluate_claims.py --all --limit 500
+    python backend/evaluate_claims.py --all --stale     # resume a taxonomy re-run
     python backend/evaluate_claims.py back_to_sleep --force
 """
 
@@ -28,14 +29,18 @@ sys.path.insert(0, SCRIPT_DIR)
 
 import console
 import llm
-from claims import CLAIMS, SUBJECTS, resolve_claim_keys
+from claims import CLAIMS, resolve_claim_keys, tested_text
 
 console.init()
 
 DATA_DIR = os.path.normpath(os.path.join(SCRIPT_DIR, "..", "data"))
 DB_PATH = os.path.join(DATA_DIR, "claims.db")
 
-STANCES = ("supports", "refutes", "neutral")
+# "mixed" is a first-class verdict, not a hedge. A meta-analysis can find that
+# heavy screen use harms language WHILE educational programming helps it; forcing
+# that into supports/refutes throws away the most interesting thing it says, and
+# hands the reader a confident badge the abstract does not earn.
+STANCES = ("supports", "refutes", "neutral", "mixed")
 STRENGTHS = ("strong", "moderate", "limited", "mixed")
 
 SYSTEM_PROMPT = (
@@ -60,8 +65,8 @@ Decide whether this paper's findings SUPPORT or REFUTE the CLAIM.
 Respond with ONLY this JSON, filling the fields in order:
 {{
   "finding": "<what the paper actually concluded, in your own words, max 20 words>",
-  "direction": "<does that conclusion agree or disagree with the CLAIM? answer 'agrees', 'disagrees', or 'does not test it'>",
-  "stance": "supports | refutes | neutral",
+  "direction": "<does that conclusion agree or disagree with the CLAIM? answer 'agrees', 'disagrees', 'both', or 'does not test it'>",
+  "stance": "supports | refutes | neutral | mixed",
   "confidence": <0-100 integer>,
   "summary": "<one sentence, max 25 words, on what this paper found about the claim>",
   "evidence_strength": "strong | moderate | limited | mixed",
@@ -71,13 +76,24 @@ Respond with ONLY this JSON, filling the fields in order:
 Rules:
 - "agrees"        -> stance "supports"
 - "disagrees"     -> stance "refutes"
+- "both"          -> stance "mixed"
 - "does not test it" -> stance "neutral"
+- Answer "both" when the abstract reports findings pointing BOTH ways on this
+  claim - for example harm from a large or low-quality dose alongside benefit
+  from a small or high-quality one. Do not average them into one direction, and
+  do not pick the louder result. If you answer "both", the summary MUST state
+  both sides.
 - Read negations carefully. Phrases like "no association", "was not a risk factor",
   "no significant difference", "did not reduce" mean the paper DISAGREES with a
   claim that asserts an effect. Matching keywords is NOT agreement.
 - A paper that only describes the topic, or is inconclusive, is "neutral" with low confidence.
 - Judge only from this abstract. Do not use outside knowledge.
 - evidence_strength: strong = meta-analysis/large RCT; moderate = smaller RCT or prospective cohort; limited = cross-sectional, case-control, small or preliminary; mixed = conflicting findings.
+
+Example of a MIXED paper:
+CLAIM: "Screen media should be avoided before 18-24 months"
+Abstract concludes: "More screen time was associated with poorer language, but educational programming and co-viewing were associated with better language."
+{{"finding": "Quantity of screen use harmed language; quality of screen use helped it", "direction": "both", "stance": "mixed", "confidence": 85, "summary": "More screen time tracked worse language, but educational and co-viewed content tracked better language.", "evidence_strength": "strong", "study_type": "meta-analysis"}}
 
 Example of a REFUTING paper:
 CLAIM: "Vitamin C prevents the common cold"
@@ -92,6 +108,11 @@ def ensure_schema(conn):
     for name, decl in [
         ("stance", "TEXT"), ("confidence", "INTEGER"), ("stance_summary", "TEXT"),
         ("evidence_strength", "TEXT"), ("study_type", "TEXT"), ("evaluated_at", "TEXT"),
+        # The model is asked to restate the finding and pick a direction BEFORE
+        # committing to a stance. Those two fields were being generated and then
+        # thrown away, which left every verdict unauditable after the fact - the
+        # only way to check one was to pay for inference again. Keep them.
+        ("finding", "TEXT"), ("direction", "TEXT"),
     ]:
         if name not in cols:
             conn.execute(f"ALTER TABLE claim_papers ADD COLUMN {name} {decl}")
@@ -112,7 +133,9 @@ def validate(data):
     # model has usually pattern-matched keywords into `stance` - trust direction.
     direction = str(data.get("direction", "")).strip().lower()
     from_direction = None
-    if "disagree" in direction:
+    if "both" in direction:             # checked first: "agrees with both" is mixed
+        from_direction = "mixed"
+    elif "disagree" in direction:
         from_direction = "refutes"
     elif "agree" in direction:          # after "disagree", so this is a real agree
         from_direction = "supports"
@@ -140,6 +163,8 @@ def validate(data):
         "stance_summary": summary[:400],
         "evidence_strength": strength,
         "study_type": str(data.get("study_type") or "other").strip().lower()[:40],
+        "finding": str(data.get("finding") or "").strip()[:400],
+        "direction": direction[:60],
     }
 
 
@@ -165,12 +190,24 @@ PENDING_SQL = """
 """
 
 
-def run(conn, client, model, claim_keys, limit=None, force=False):
+def run(conn, client, model, claim_keys, limit=None, force=False, stale=False):
     ensure_schema(conn)
+
+    # `direction` is only ever written by the current evaluator, so a row that
+    # has one has been judged under the present taxonomy and a row that has not
+    # is either untouched or left over from an older one. That makes --stale the
+    # resumable form of --force: kill it halfway, run it again, and it resumes
+    # exactly where it stopped instead of starting the whole corpus over.
+    if force:
+        stance_filter = ""
+    elif stale:
+        stance_filter = "AND (cp.direction IS NULL OR cp.direction = '')"
+    else:
+        stance_filter = "AND (cp.stance IS NULL OR cp.stance = '')"
 
     sql = PENDING_SQL.format(
         placeholders=",".join("?" * len(claim_keys)),
-        stance_filter="" if force else "AND (cp.stance IS NULL OR cp.stance = '')",
+        stance_filter=stance_filter,
         limit_clause=f"LIMIT {int(limit)}" if limit else "",
     )
     rows = conn.execute(sql, claim_keys).fetchall()
@@ -186,7 +223,8 @@ def run(conn, client, model, claim_keys, limit=None, force=False):
     started = time.time()
 
     for i, (claim_key, paper_id, title, abstract) in enumerate(rows, 1):
-        claim_text = CLAIMS[claim_key]["claim"]
+        # The empirical wording, not the headline. A paper cannot test "should".
+        claim_text = tested_text(claim_key)
         try:
             result = evaluate_pair(client, model, claim_text, title, abstract)
         except Exception as e:
@@ -202,15 +240,18 @@ def run(conn, client, model, claim_keys, limit=None, force=False):
         conn.execute("""
             UPDATE claim_papers
                SET stance = ?, confidence = ?, stance_summary = ?,
-                   evidence_strength = ?, study_type = ?, evaluated_at = datetime('now')
+                   evidence_strength = ?, study_type = ?, finding = ?, direction = ?,
+                   evaluated_at = datetime('now')
              WHERE claim_key = ? AND paperId = ?
         """, (result["stance"], result["confidence"], result["stance_summary"],
-              result["evidence_strength"], result["study_type"], claim_key, paper_id))
+              result["evidence_strength"], result["study_type"],
+              result["finding"], result["direction"], claim_key, paper_id))
         done += 1
         tally[result["stance"]] += 1
 
-        if done % 5 == 0:
-            conn.commit()
+        # Commit per row, not per batch: batching held the write lock across
+        # several LLM calls, which locked out any parallel shard.
+        conn.commit()
 
         rate = (time.time() - started) / i
         eta = rate * (len(rows) - i)
@@ -222,23 +263,27 @@ def run(conn, client, model, claim_keys, limit=None, force=False):
     elapsed = (time.time() - started) / 60
     print(f"\nEvaluated {done}, failed {failed}, in {elapsed:.1f} min")
     print(f"  supports {tally['supports']}  refutes {tally['refutes']}  "
-          f"neutral {tally['neutral']}")
+          f"mixed {tally['mixed']}  neutral {tally['neutral']}")
     return done
 
 
 def main():
     parser = argparse.ArgumentParser(description="LLM stance evaluation for claims")
-    parser.add_argument("selection", nargs="*", help="claim / subject / domain keys")
+    parser.add_argument("selection", nargs="*", help="claim / topic keys")
     parser.add_argument("--seed", action="store_true", help="the proof set")
     parser.add_argument("--all", action="store_true", help="every claim")
     parser.add_argument("--limit", type=int, help="max pairs this run")
-    parser.add_argument("--force", action="store_true", help="re-evaluate existing")
+    parser.add_argument("--force", action="store_true",
+                        help="re-evaluate everything, including rows already redone")
+    parser.add_argument("--stale", action="store_true",
+                        help="re-evaluate only rows judged before the reasoning "
+                             "fields existed - the resumable form of --force")
     parser.add_argument("--model", default=llm.DEFAULT_MODEL)
     parser.add_argument("--db", default=DB_PATH)
     args = parser.parse_args()
 
     if not args.selection and not args.seed and not args.all:
-        print("[error] pass --seed, --all, or claim/subject/domain keys")
+        print("[error] pass --seed, --all, or claim/topic keys")
         raise SystemExit(1)
 
     if not llm.ping():
@@ -252,9 +297,15 @@ def main():
     keys = resolve_claim_keys(args.selection or None, seed=args.seed)
     client, model = llm.get_client(model=args.model)
 
-    conn = sqlite3.connect(args.db)
+    conn = sqlite3.connect(args.db, timeout=60)
+    # Shards of disjoint claims can be evaluated by several processes at once.
+    # WAL lets them interleave; the busy timeout absorbs the brief overlap when
+    # two of them commit at the same moment.
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA busy_timeout=60000")
     try:
-        run(conn, client, model, keys, limit=args.limit, force=args.force)
+        run(conn, client, model, keys, limit=args.limit, force=args.force,
+            stale=args.stale)
     finally:
         conn.close()
 

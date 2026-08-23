@@ -112,6 +112,7 @@ CLAIMS = {
     "weaning_6m": {
         "topic": "food", "group": "Starting solids",
         "claim": "Complementary feeding should begin at around 6 months of age",
+        "tested_as": "Introducing complementary foods at around 6 months is associated with better outcomes than introducing them earlier or later",
         "query": "complementary feeding introduction 6 months infant timing",
         "age_range": "6 months",
         "keyword_hints": ["complementary feeding", "weaning", "6 months", "solid food", "introduction", "timing"],
@@ -163,6 +164,7 @@ CLAIMS = {
     "cow_milk_12m": {
         "topic": "food", "group": "Milk & drinks",
         "claim": "Cow's milk should not be given as a main drink before 12 months",
+        "tested_as": "Cow's milk as the main drink before 12 months is associated with worse outcomes such as iron deficiency",
         "query": "cow milk introduction before 12 months infant main drink",
         "age_range": "0-12 months",
         "keyword_hints": ["cow milk", "cows milk", "main drink", "12 months", "introduction"],
@@ -177,6 +179,7 @@ CLAIMS = {
     "juice_limit": {
         "topic": "food", "group": "Milk & drinks",
         "claim": "Fruit juice should be avoided before 12 months",
+        "tested_as": "Fruit juice consumption before 12 months is associated with worse health outcomes",
         "query": "fruit juice infant intake dental caries weight guidelines",
         "age_range": "0-12 months",
         "keyword_hints": ["fruit juice", "juice", "caries", "sugar", "guideline", "intake"],
@@ -223,6 +226,7 @@ CLAIMS = {
     "honey_avoid_12m": {
         "topic": "food", "group": "Food safety",
         "claim": "Honey should be avoided before 12 months because of infant botulism risk",
+        "tested_as": "Honey consumption before 12 months is associated with infant botulism",
         "query": "honey infant botulism Clostridium botulinum spores risk",
         "age_range": "0-12 months",
         "keyword_hints": ["honey", "botulism", "clostridium", "spore", "infant"],
@@ -230,6 +234,7 @@ CLAIMS = {
     "salt_limit": {
         "topic": "food", "group": "Food safety",
         "claim": "Added salt should be avoided in the infant diet",
+        "tested_as": "Higher sodium intake in infancy is associated with worse health outcomes",
         "query": "sodium salt intake infant blood pressure renal load",
         "age_range": "0-24 months",
         "keyword_hints": ["salt", "sodium", "blood pressure", "renal", "intake"],
@@ -237,6 +242,7 @@ CLAIMS = {
     "sugar_limit": {
         "topic": "food", "group": "Food safety",
         "claim": "Free sugars should be avoided before 24 months",
+        "tested_as": "Free sugar intake before 24 months is associated with worse health outcomes",
         "query": "free sugar intake infant toddler dental caries taste preference",
         "age_range": "0-24 months",
         "keyword_hints": ["sugar", "sweet", "caries", "taste preference", "free sugars"],
@@ -388,6 +394,7 @@ CLAIMS = {
     "no_screens_under_2": {
         "topic": "screens", "group": "Exposure & guidelines",
         "claim": "Screen media should be avoided before 18-24 months",
+        "tested_as": "Screen media exposure before 18-24 months is associated with worse developmental outcomes",
         "query": "screen media exposure under 2 years infant guidelines outcomes",
         "age_range": "0-24 months",
         "keyword_hints": ["screen time", "screen media", "under 2", "guideline", "media exposure", "television"],
@@ -402,6 +409,7 @@ CLAIMS = {
     "video_chat_exception": {
         "topic": "screens", "group": "Exposure & guidelines",
         "claim": "Video chatting is an acceptable exception to infant screen-time limits",
+        "tested_as": "Video chatting with a live partner is associated with better outcomes than pre-recorded screen content in infancy",
         "query": "video chat infant social contingency learning screen exception",
         "age_range": "6-24 months",
         "keyword_hints": ["video chat", "videochat", "skype", "facetime", "social contingency", "video deficit"],
@@ -517,6 +525,7 @@ CLAIMS = {
     "physical_activity_guideline": {
         "topic": "activity", "group": "Activity levels",
         "claim": "Infants should have at least 30 minutes of tummy time or active play daily",
+        "tested_as": "Greater daily tummy time or active play in infancy is associated with better motor development",
         "query": "infant physical activity guideline 30 minutes tummy time daily recommendation",
         "age_range": "0-12 months",
         "keyword_hints": ["physical activity", "guideline", "30 minutes", "recommendation", "active play", "adherence"],
@@ -664,6 +673,27 @@ SEED_CLAIMS = [
 
 
 # ── Lookup helpers ───────────────────────────────────────────────────────────
+
+# A claim carries the wording people actually use ("claim") and, where those
+# differ, the wording a study can actually test ("tested_as").
+#
+# They diverge because a prescriptive claim - "screen media should be avoided
+# before 18-24 months" - is not something any paper tests. Asked to judge one,
+# mistral extracts the right finding and then inverts the verdict: the identical
+# abstract scored "refutes" against that wording and "supports" against
+# "...exposure before 18-24 months is associated with worse developmental
+# outcomes". Nine of the eighty claims were phrased prescriptively, covering a
+# fifth of all judgements.
+#
+# So the evaluator reads tested_as and the reader sees claim. tested_as is
+# surfaced in the UI too - a reader is entitled to know what was actually
+# measured on their behalf.
+def tested_text(claim_key):
+    """What the evaluator should judge against: the empirical wording if the
+    claim has one, otherwise the claim itself."""
+    cfg = CLAIMS[claim_key]
+    return cfg.get("tested_as") or cfg["claim"]
+
 
 def claims_for_topic(topic_key):
     return {k: v for k, v in CLAIMS.items() if v["topic"] == topic_key}
