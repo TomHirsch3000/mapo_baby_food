@@ -8,6 +8,9 @@ import { LayoutEngine } from '../modules/LayoutEngine';
 export const STANCE_COLORS = {
     supports: '#2e9e5b',
     refutes: '#d64545',
+    // Mixed is deliberately NOT on the red-green axis. A paper that cuts both
+    // ways should not be readable as a washed-out version of either verdict.
+    mixed: '#b8860b',
     neutral: '#94a3b8',
     unevaluated: '#cbd5e1',
 };
@@ -35,7 +38,9 @@ export const Graph = ({
     width,
     height,
     onNodeDoubleClick,
-    isLoadingDetail
+    isLoadingDetail,
+    evidenceXAxis = 'strength',
+    reading = 'balanced'
 }) => {
     const svgRef = useRef(null);
     const layoutEngine = useRef(new LayoutEngine(width, height));
@@ -83,6 +88,7 @@ export const Graph = ({
 
         if (isEvidence) {
             currentNodes.forEach(n => {
+                if (n.type === 'claim-anchor') return;   // drawn as a circle, not a card
                 const cites = n.citationCount || 0;
                 n._w = 80 + Math.sqrt(cites) * 3;
                 n._h = 50 + Math.sqrt(cites) * 1.5;
@@ -98,6 +104,11 @@ export const Graph = ({
         let gLinks = gMain.select(".g-links");
         if (gLinks.empty()) gLinks = gMain.append("g").attr("class", "g-links");
 
+        // Chevrons ride above the ribbons but below the cards, so a citation
+        // arrow is never drawn over the paper it points at.
+        let gLinkHeads = gMain.select(".g-link-heads");
+        if (gLinkHeads.empty()) gLinkHeads = gMain.append("g").attr("class", "g-link-heads");
+
         let gAxisLayer = gMain.select(".g-axis-layer");
         if (gAxisLayer.empty()) gAxisLayer = gMain.append("g").attr("class", "g-axis-layer");
 
@@ -110,6 +121,7 @@ export const Graph = ({
         gAxisLayer.lower();
         gHexBg.lower();
         gLinks.lower();
+        gLinkHeads.raise();
         gNodes.raise();
 
         const zoom = d3.zoom()
@@ -128,6 +140,7 @@ export const Graph = ({
 
         if (prevViewMode.current !== viewMode || prevLayoutMode.current !== layoutMode) {
             gLinks.selectAll("*").remove();
+            gLinkHeads.selectAll("*").remove();
             gNodes.selectAll("*").interrupt().remove();
             gHexBg.selectAll("*").remove();
             gNodes.style("opacity", 0);
@@ -137,9 +150,9 @@ export const Graph = ({
         const sim = d3.forceSimulation(currentNodes);
 
         if (isClaims) {
-            layoutEngine.current.applyClaimsLayout(currentNodes, sim);
+            layoutEngine.current.applyClaimsLayout(currentNodes, sim, reading);
         } else if (isEvidence) {
-            layoutEngine.current.applyEvidenceLayout(currentNodes, currentEdges, sim);
+            layoutEngine.current.applyEvidenceLayout(currentNodes, currentEdges, sim, evidenceXAxis, reading);
         } else {
             layoutEngine.current.applyTopicsLayout(currentNodes, sim);
         }
@@ -209,8 +222,21 @@ export const Graph = ({
                     const ntx = tgt.x + dirXt * tt;
                     const nty = tgt.y + dirYt * tt;
 
-                    const wStart = 2;
-                    const wEnd = 8;
+                    // Direction follows the flow of INFLUENCE, not the
+                    // direction of the reference: an older paper's findings
+                    // travel forward into the newer paper that cites it.
+                    //
+                    // The edge itself is stored the other way round -
+                    // import_claims.py writes (citing, cited) straight off
+                    // OpenAlex's referenced_works, so `source` is the NEWER
+                    // paper in 91.6% of edges. The ribbon therefore has to be
+                    // drawn against the edge's own orientation: hairline at the
+                    // TARGET (cited, older) end, fanning out at the SOURCE
+                    // (citing, newer) end, which is where influence arrives.
+                    const wAtSource = 13;    // citing paper - destination
+                    const wAtTarget = 1.5;   // cited paper  - origin
+                    const wStart = wAtSource;
+                    const wEnd = wAtTarget;
 
                     const dx1 = cx - nsx;
                     const dy1 = cy - nsy;
@@ -240,6 +266,13 @@ export const Graph = ({
                     const c2x = cx - nx * (wMid / 2);
                     const c2y = cy - ny * (wMid / 2);
 
+                    d._spine = {
+                        x0: ntx, y0: nty,          // cited (older): flow starts
+                        cx, cy,
+                        x1: nsx, y1: nsy,          // citing (newer): flow ends
+                        w0: wAtTarget, w1: wAtSource,
+                    };
+
                     return `M${s1x},${s1y} Q${c1x},${c1y} ${t1x},${t1y} L${t2x},${t2y} Q${c2x},${c2y} ${s2x},${s2y} Z`;
                 } else {
                     return `M${src.x},${src.y} L${tgt.x},${tgt.y}`;
@@ -251,6 +284,74 @@ export const Graph = ({
                     .attr("x2", d => d.target.x).attr("y2", d => d.target.y);
             }
         };
+
+        /**
+         * Direction markers along each citation ribbon.
+         *
+         * The taper alone is ambiguous once ribbons overlap, and an arrowhead
+         * parked at the tip gets hidden behind the target card. So chevrons sit
+         * ON the ribbon, at fixed fractions of its length, pointing the way the
+         * citation runs: from the paper doing the citing to the paper cited.
+         *
+         * They are drawn in white on top of the coloured ribbon, which reads as
+         * a notch cut out of it rather than another line competing with it.
+         */
+        const CHEVRON_AT = [0.45, 0.72, 0.9];
+
+        const updateLinkHeads = (sel) => {
+            sel.attr("d", d => {
+                const sp = d._spine;
+                if (!sp) return "";
+
+                // Quadratic Bezier position and tangent, same curve as the ribbon.
+                const at = (t) => {
+                    const mt = 1 - t;
+                    return {
+                        x: mt * mt * sp.x0 + 2 * mt * t * sp.cx + t * t * sp.x1,
+                        y: mt * mt * sp.y0 + 2 * mt * t * sp.cy + t * t * sp.y1,
+                        tx: 2 * mt * (sp.cx - sp.x0) + 2 * t * (sp.x1 - sp.cx),
+                        ty: 2 * mt * (sp.cy - sp.y0) + 2 * t * (sp.y1 - sp.cy),
+                    };
+                };
+
+                let path = "";
+                CHEVRON_AT.forEach(t => {
+                    const p = at(t);
+                    const len = Math.hypot(p.tx, p.ty) || 1;
+                    const ux = p.tx / len, uy = p.ty / len;      // along the ribbon
+                    const px = -uy, py = ux;                      // across it
+
+                    // Scale with the local ribbon width so the notch always fits
+                    // inside the taper instead of spilling over the edges.
+                    const localW = sp.w0 + (sp.w1 - sp.w0) * t;
+                    const half = Math.max(3.6, localW * 0.66);
+                    const reach = Math.max(5.0, localW * 0.92);
+
+                    const bx = p.x - ux * reach * 0.5;
+                    const by = p.y - uy * reach * 0.5;
+                    const tipX = bx + ux * reach;
+                    const tipY = by + uy * reach;
+
+                    path += `M${bx + px * half},${by + py * half} `
+                          + `L${tipX},${tipY} `
+                          + `L${bx - px * half},${by - py * half} `;
+                });
+                return path;
+            });
+        };
+
+        const headJoin = gLinkHeads.selectAll(".d3-link-head")
+            .data(isEvidence ? currentEdges : [], getEdgeKey);
+        headJoin.exit().remove();
+        const headEnter = headJoin.enter().append("path")
+            .attr("class", "d3-link-head")
+            .attr("fill", "none")
+            .attr("stroke", "#ffffff")
+            .attr("stroke-width", 2.6)
+            .attr("stroke-linecap", "round")
+            .attr("stroke-linejoin", "round")
+            .style("pointer-events", "none");
+        const allHeads = headEnter.merge(headJoin);
 
         const linkJoin = gLinks.selectAll(".d3-link").data(currentEdges, getEdgeKey);
         linkJoin.exit().remove();
@@ -286,6 +387,7 @@ export const Graph = ({
         }
 
         updateLinkPaths(allLinks);
+        updateLinkHeads(allHeads);
         allLinks.attr("stroke-width", d => (isClaims || isEvidence) ? Math.max(2, Math.sqrt(d.weight || 1)) : 1)
             .attr("stroke-opacity", 0);
 
@@ -318,6 +420,12 @@ export const Graph = ({
                 const fo = el.append("foreignObject").attr("class", "hex-label-fo");
                 fo.append("xhtml:div").attr("class", "hex-label-div");
             } else if (isClaims) {
+                el.append("circle").attr("class", "orbit");
+                el.append("circle").attr("class", "core");
+                const fo = el.append("foreignObject").attr("class", "galaxy-label-fo");
+                fo.append("xhtml:div").attr("class", "galaxy-label-div");
+            } else if (isEvidence && d.type === 'claim-anchor') {
+                // The claim keeps the circle it wore one level up.
                 el.append("circle").attr("class", "orbit");
                 el.append("circle").attr("class", "core");
                 const fo = el.append("foreignObject").attr("class", "galaxy-label-fo");
@@ -362,7 +470,7 @@ export const Graph = ({
                 const r = d.val || 20;
                 const decided = (d.supports || 0) + (d.refutes || 0);
                 const colour = d.hasEvidence
-                    ? STANCE_DIVERGING(d.netSupport ?? 0)
+                    ? STANCE_DIVERGING(LayoutEngine.netFor(d, reading))
                     : STANCE_COLORS.unevaluated;
 
                 el.select(".orbit")
@@ -489,15 +597,60 @@ export const Graph = ({
                         `~${(d.openAlexCount || 0).toLocaleString()} papers published</div>`
                     );
                 el.select(".label-main").text("");
+            } else if (isEvidence && d.type === 'claim-anchor') {
+                // Same colour rule as the claims screen, so the node reads as
+                // the very one you clicked to get here.
+                const r = d.val || 52;
+                const colour = STANCE_DIVERGING(LayoutEngine.netFor(d, reading));
+
+                el.select(".orbit")
+                    .attr("r", r + 16)
+                    .attr("fill", colour).attr("fill-opacity", 0.10)
+                    .attr("stroke", colour).attr("stroke-opacity", 0.55)
+                    .attr("stroke-width", 2).attr("stroke-dasharray", "5 4");
+                el.select(".core")
+                    .attr("r", r)
+                    .attr("fill", colour).attr("fill-opacity", 0.9)
+                    .attr("stroke", "#ffffff").attr("stroke-width", 3);
+
+                const labelW = 320;
+                el.select(".galaxy-label-fo")
+                    .attr("x", -labelW / 2).attr("y", r + 24)
+                    .attr("width", labelW).attr("height", 130)
+                    .style("overflow", "visible").style("pointer-events", "none");
+                el.select(".galaxy-label-div")
+                    .style("width", `${labelW}px`)
+                    .style("display", "flex").style("flex-direction", "column")
+                    .style("align-items", "center").style("text-align", "center")
+                    .style("font-family", "Inter, system-ui, sans-serif")
+                    .style("color", "#1e293b").style("line-height", "1.3")
+                    .html(
+                        `<div style="font-size:13px;font-weight:700;">${d.claim || ""}</div>` +
+                        `<div style="font-size:11px;margin-top:4px;">` +
+                        `<span style="color:${STANCE_COLORS.supports};font-weight:700;">${d.supports || 0}</span>` +
+                        `<span style="color:#94a3b8;"> for · </span>` +
+                        `<span style="color:${STANCE_COLORS.refutes};font-weight:700;">${d.refutes || 0}</span>` +
+                        `<span style="color:#94a3b8;"> against · ${d.neutral || 0} neutral</span></div>`
+                    );
+                el.select(".label-main").text("");
+                el.select(".label-sub").text("");
             } else if (isEvidence) {
                 const w = d._w || 80;
                 const h = d._h || 50;
                 const cardColor = STANCE_COLORS[d.stance] || STANCE_COLORS.unevaluated;
+                // Neutral papers took no position, so they recede into a haze
+                // on the midline instead of competing with the decisive ones.
+                const isNeutral = d.stance === 'neutral';
 
                 el.select(".node-paper-bg").attr("x", -w / 2).attr("y", -h / 2).attr("width", w).attr("height", h);
                 el.select(".node-paper-card").attr("x", -w / 2).attr("y", -h / 2).attr("width", w).attr("height", h)
-                    .attr("fill", cardColor).attr("fill-opacity", 0.2)
-                    .style("stroke", cardColor).style("stroke-width", 2);
+                    .attr("fill", cardColor).attr("fill-opacity", isNeutral ? 0.07 : 0.2)
+                    .style("stroke", cardColor).style("stroke-width", isNeutral ? 1 : 2)
+                    .style("stroke-opacity", isNeutral ? 0.45 : 1);
+                // Dim via the card's own fills, NOT via node opacity: the hover
+                // effect owns node opacity and resets it to 1, which would undo
+                // any dimming set here the first time the cursor moves.
+                el.select(".node-paper-bg").attr("fill-opacity", isNeutral ? 0.55 : 1);
                 el.select(".node-fo-wrapper").attr("x", -w / 2).attr("y", -h / 2).attr("width", w).attr("height", h);
                 el.select(".node-paper-title")
                     .style("font-size", `${Math.min(12, Math.max(9, w / 12))}px`)
@@ -519,26 +672,104 @@ export const Graph = ({
                 .style("fill", "#94a3b8").style("pointer-events", "none")
                 .text(text);
 
+        /**
+         * The quadrant frame both scatter screens share.
+         *
+         * Zoomed out far enough to see every cluster, 12px axis captions vanish
+         * long before the clusters do, which leaves four blobs and no way to
+         * tell which is which. So the orientation is carried by oversized,
+         * very-low-contrast type set OUTSIDE the plot: legible at a glance when
+         * the whole map is on screen, and quiet enough to ignore up close.
+         *
+         * Quadrant captions sit at the corners rather than the middle of each
+         * quadrant, keeping the centre - where a contested claim's papers pile
+         * up - clear.
+         */
+        const drawQuadrantFrame = ({ cy, halfW, halfH, endTop, endBottom, endLeft, endRight, quadrants }) => {
+            const overhangX = halfW * 0.30;
+            const overhangY = halfH * 0.34;
+            const l = -halfW, r = halfW;
+            const t = cy - halfH, b = cy + halfH;
+
+            // Crosshair, run well past the data so the eye can follow it out.
+            gAxisLayer.append("line")
+                .attr("x1", 0).attr("x2", 0)
+                .attr("y1", t - overhangY).attr("y2", b + overhangY)
+                .attr("stroke", "#cbd5e1").attr("stroke-width", 1.5)
+                .attr("stroke-dasharray", "6 5");
+            gAxisLayer.append("line")
+                .attr("x1", l - overhangX).attr("x2", r + overhangX)
+                .attr("y1", cy).attr("y2", cy)
+                .attr("stroke", "#cbd5e1").attr("stroke-width", 1.5)
+                .attr("stroke-dasharray", "6 5");
+
+            // Arrowheads, so each axis reads as a direction and not a divider.
+            const tip = (x, y, dx, dy) => gAxisLayer.append("path")
+                .attr("d", `M${x},${y} L${x + dx - dy * 0.5},${y + dy + dx * 0.5} `
+                          + `M${x},${y} L${x + dx + dy * 0.5},${y + dy - dx * 0.5}`)
+                .attr("stroke", "#cbd5e1").attr("stroke-width", 1.5).attr("fill", "none");
+            tip(0, t - overhangY, 0, 14);
+            tip(0, b + overhangY, 0, -14);
+            tip(l - overhangX, cy, 14, 0);
+            tip(r + overhangX, cy, -14, 0);
+
+            const BIG = { size: 46, weight: 800, fill: "#dfe6ee", spacing: "0.10em" };
+            const big = (x, y, text, anchor) => gAxisLayer.append("text")
+                .attr("x", x).attr("y", y).attr("text-anchor", anchor)
+                .style("font-family", "Inter, system-ui, sans-serif")
+                .style("font-size", `${BIG.size}px`).style("font-weight", BIG.weight)
+                .style("letter-spacing", BIG.spacing)
+                .style("fill", BIG.fill).style("pointer-events", "none")
+                .text(text);
+
+            big(0, t - overhangY - 34, endTop, "middle");
+            big(0, b + overhangY + 66, endBottom, "middle");
+            big(l - overhangX - 26, cy + 16, endLeft, "end");
+            big(r + overhangX + 26, cy + 16, endRight, "start");
+
+            // Corner captions: [dx, dy, anchor] per quadrant.
+            const corners = {
+                topRight:    [r - 12, t + 46, "end"],
+                topLeft:     [l + 12, t + 46, "start"],
+                bottomRight: [r - 12, b - 26, "end"],
+                bottomLeft:  [l + 12, b - 26, "start"],
+            };
+            Object.entries(quadrants || {}).forEach(([key, lines]) => {
+                const spot = corners[key];
+                if (!spot || !lines) return;
+                const [x, y, anchor] = spot;
+                lines.forEach((line, i) => {
+                    gAxisLayer.append("text")
+                        .attr("x", x).attr("y", y + i * 21)
+                        .attr("text-anchor", anchor)
+                        .style("font-family", "Inter, system-ui, sans-serif")
+                        .style("font-size", i === 0 ? "17px" : "14px")
+                        .style("font-weight", i === 0 ? 700 : 500)
+                        .style("letter-spacing", i === 0 ? "0.04em" : "0")
+                        .style("fill", i === 0 ? "#b6c2d0" : "#c3cdda")
+                        .style("pointer-events", "none")
+                        .text(line);
+                });
+            });
+        };
+
         if (isClaims && layoutEngine.current.claimsFrame) {
             const f = layoutEngine.current.claimsFrame;
             const left = -f.plotW / 2, right = f.plotW / 2;
             const top = f.plotCY - f.plotH / 2, bottom = f.plotCY + f.plotH / 2;
 
             if (f.hasPlot) {
-                // Quadrant crosshair: vertical at "contested", horizontal at mid quality.
-                gAxisLayer.append("line")
-                    .attr("x1", 0).attr("x2", 0).attr("y1", top - 30).attr("y2", bottom + 30)
-                    .attr("stroke", "#cbd5e1").attr("stroke-width", 1).attr("stroke-dasharray", "4 4");
-                gAxisLayer.append("line")
-                    .attr("x1", left - 30).attr("x2", right + 30)
-                    .attr("y1", f.plotCY).attr("y2", f.plotCY)
-                    .attr("stroke", "#cbd5e1").attr("stroke-width", 1).attr("stroke-dasharray", "4 4");
-
-                axisLabel(left - 40, f.plotCY - 10, "REFUTED", "end", 11);
-                axisLabel(right + 40, f.plotCY - 10, "SUPPORTED", "start", 11);
-                axisLabel(0, top - 44, "STRONGER STUDIES", "middle", 11);
-                axisLabel(0, bottom + 52, "WEAKER STUDIES", "middle", 11);
-                axisLabel(0, top - 78, "How true is this claim?  →  left to right", "middle", 13, 500);
+                drawQuadrantFrame({
+                    cy: f.plotCY, halfW: f.plotW / 2, halfH: f.plotH / 2,
+                    endTop: "SUPPORTED", endBottom: "REFUTED",
+                    endLeft: "WEAKER", endRight: "STRONGER",
+                    quadrants: {
+                        topRight:    ["SETTLED", "supported by strong studies"],
+                        topLeft:     ["PROMISING", "supported, but weak studies"],
+                        bottomRight: ["DEBUNKED", "refuted by strong studies"],
+                        bottomLeft:  ["DOUBTFUL", "refuted, but weak studies"],
+                    },
+                });
             }
 
             if (f.shelfTop !== null) {
@@ -553,28 +784,64 @@ export const Graph = ({
         } else if (isEvidence && layoutEngine.current.evidenceFrame) {
             const f = layoutEngine.current.evidenceFrame;
             const left = -f.plotW / 2, right = f.plotW / 2;
+            const top = f.plotCY - f.plotH / 2, bottom = f.plotCY + f.plotH / 2;
 
-            gAxisLayer.append("line")
-                .attr("x1", left - 40).attr("x2", right + 40)
-                .attr("y1", f.axisY).attr("y2", f.axisY)
-                .attr("stroke", "#cbd5e1").attr("stroke-width", 1.5);
+            const byYear = f.xAxisMode === 'year';
+            drawQuadrantFrame({
+                cy: f.plotCY, halfW: f.plotW / 2, halfH: f.plotH / 2,
+                endTop: "SUPPORTS", endBottom: "REFUTES",
+                endLeft: byYear ? "OLDER" : "WEAKER",
+                endRight: byYear ? "NEWER" : "STRONGER",
+                quadrants: byYear ? {
+                    topRight:    ["SUPPORTS", "recent work"],
+                    topLeft:     ["SUPPORTS", "older work"],
+                    bottomRight: ["REFUTES", "recent work"],
+                    bottomLeft:  ["REFUTES", "older work"],
+                } : {
+                    topRight:    ["SUPPORTS", "on strong studies"],
+                    topLeft:     ["SUPPORTS", "on weak studies"],
+                    bottomRight: ["REFUTES", "on strong studies"],
+                    bottomLeft:  ["REFUTES", "on weak studies"],
+                },
+            });
 
-            // Year ticks, thinned so labels never collide.
-            const span = f.maxYear - f.minYear;
-            const stepYears = span > 60 ? 10 : span > 30 ? 5 : span > 12 ? 2 : 1;
-            const firstTick = Math.ceil(f.minYear / stepYears) * stepYears;
-            for (let y = firstTick; y <= f.maxYear; y += stepYears) {
-                const x = f.xScale(y);
-                gAxisLayer.append("line")
-                    .attr("x1", x).attr("x2", x)
-                    .attr("y1", f.axisY - 5).attr("y2", f.axisY + 5)
-                    .attr("stroke", "#cbd5e1").attr("stroke-width", 1);
-                axisLabel(x, f.axisY + 22, String(y), "middle", 11, 500);
+            // Confidence gridlines, so vertical distance is readable as a number.
+            [0.5, 1].forEach(v => {
+                [1, -1].forEach(sign => {
+                    const y = f.plotCY + f.yScale(sign * v);
+                    gAxisLayer.append("line")
+                        .attr("x1", left).attr("x2", right)
+                        .attr("y1", y).attr("y2", y)
+                        .attr("stroke", "#eef2f6").attr("stroke-width", 1);
+                    axisLabel(left - 10, y + 4, `${Math.round(v * 100)}%`, "end", 10, 500);
+                });
+            });
+
+            if (f.xAxisMode === 'year') {
+                const span = f.maxYear - f.minYear;
+                const stepYears = span > 60 ? 10 : span > 30 ? 5 : span > 12 ? 2 : 1;
+                const firstTick = Math.ceil(f.minYear / stepYears) * stepYears;
+                for (let y = firstTick; y <= f.maxYear; y += stepYears) {
+                    const x = f.xScale(y);
+                    gAxisLayer.append("line")
+                        .attr("x1", x).attr("x2", x)
+                        .attr("y1", bottom).attr("y2", bottom + 8)
+                        .attr("stroke", "#cbd5e1").attr("stroke-width", 1);
+                    axisLabel(x, bottom + 26, String(y), "middle", 11, 500);
+                }
+                axisLabel(0, bottom + 52, "publication year  →", "middle", 12, 500);
+            } else {
+                f.strengthLevels.forEach(({ key, x }) => {
+                    gAxisLayer.append("line")
+                        .attr("x1", x).attr("x2", x)
+                        .attr("y1", top).attr("y2", bottom + 8)
+                        .attr("stroke", "#eef2f6").attr("stroke-width", 1);
+                    axisLabel(x, bottom + 26, key.toUpperCase(), "middle", 11, 600);
+                });
+                axisLabel(0, bottom + 52, "strength of the study  →", "middle", 12, 500);
             }
 
-            axisLabel(left - 50, f.axisY - 60, "SUPPORTS", "end", 12);
-            axisLabel(left - 50, f.axisY + 70, "REFUTES", "end", 12);
-            axisLabel(0, f.axisY + 46, "publication year  →", "middle", 12, 500);
+            axisLabel(left - 10, f.plotCY - 8, "no signal", "end", 10, 500);
         } else {
             gAxisLayer.style("opacity", 0);
         }
@@ -598,10 +865,12 @@ export const Graph = ({
             allNodes.transition("flyin").duration(800).ease(d3.easeBackOut.overshoot(0.8))
                 .attr("transform", d => `translate(${d.x}, ${d.y}) scale(1)`);
             gLinks.transition("flyin-links").delay(600).duration(500).style("opacity", 1);
+            gLinkHeads.transition("flyin-heads").delay(600).duration(500).style("opacity", 1);
             allLinks.transition("flyin-links-stroke").delay(600).duration(500).attr("stroke-opacity", 0.6);
         } else {
             gNodes.style("opacity", 1);
             gLinks.style("opacity", 1);
+            gLinkHeads.style("opacity", 1);
             allLinks.attr("stroke-opacity", 0.6);
 
             // Fit the tessellated hex cluster whenever we land on Topics —
@@ -635,7 +904,7 @@ export const Graph = ({
         prevLayoutMode.current = layoutMode;
         simulationRef.current = sim;
 
-    }, [nodes, edges, viewMode, layoutMode, groupingMode, activeGroup, selected, width, height, scales]);
+    }, [nodes, edges, viewMode, layoutMode, groupingMode, activeGroup, selected, width, height, scales, evidenceXAxis, reading]);
 
     useEffect(() => {
         if (!svgRef.current) return;
@@ -645,7 +914,19 @@ export const Graph = ({
         const isTopics = viewMode === 'TOPICS';
 
         const gLinks = svg.select(".g-links");
+        const gLinkHeads = svg.select(".g-link-heads");
         const gNodes = svg.select(".g-nodes");
+
+        // Chevrons must track their ribbon's opacity exactly. Left at full
+        // strength they would hover over faded-out lines as detached ticks.
+        const fadeHeads = (keep) => gLinkHeads.selectAll(".d3-link-head")
+            .transition("highlight-heads").duration(200)
+            .style("opacity", function () {
+                const d = d3.select(this).datum();
+                if (!keep) return 1;
+                const key = `${d.source.id || d.source}|${d.target.id || d.target}`;
+                return keep.has(key) ? 1 : 0.05;
+            });
 
         // On the evidence view a click pins a paper; elsewhere only hover focuses.
         const focusNode = hovered || (isEvidence && selected && !isReturning ? selected : null);
@@ -681,6 +962,7 @@ export const Graph = ({
                             ? Math.max(2, Math.sqrt(weight) + 1)
                             : Math.max(1, Math.sqrt(weight));
                     });
+                fadeHeads(connectedEdgeIds);
             }
 
             // Topics and claims emphasise in place. No transform changes here -
@@ -706,6 +988,7 @@ export const Graph = ({
                 });
         } else {
             if (isEvidence) {
+                fadeHeads(null);
                 gLinks.selectAll(".d3-link").transition("highlight").duration(200)
                     .style("opacity", 1)
                     .attr("stroke-width", function () {

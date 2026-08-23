@@ -32,3 +32,55 @@
     box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
     font-weight: 600;
 }
+
+/* Evidence-view horizontal axis switch. Sits under the breadcrumb, so it is
+   styled as a compact segmented control rather than a second prominent button. */
+.axis-toggle {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px;
+    background: rgba(255, 255, 255, 0.92);
+    backdrop-filter: blur(8px);
+    border: 1px solid rgba(0, 0, 0, 0.08);
+    border-radius: 18px;
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+    font-family: Inter, system-ui, sans-serif;
+}
+
+.axis-toggle-label {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: #94a3b8;
+    padding: 0 6px 0 8px;
+}
+
+.axis-toggle-btn {
+    border: 0;
+    background: transparent;
+    color: #64748b;
+    font: inherit;
+    font-size: 12px;
+    font-weight: 600;
+    padding: 5px 12px;
+    border-radius: 14px;
+    cursor: pointer;
+    transition: background-color 120ms ease, color 120ms ease;
+}
+
+.axis-toggle-btn:hover {
+    background: #f1f5f9;
+    color: #334155;
+}
+
+.axis-toggle-btn.is-active {
+    background: #6366f1;
+    color: #ffffff;
+}
+
+.axis-toggle-btn.is-active:hover {
+    background: #4f46e5;
+    color: #ffffff;
+}

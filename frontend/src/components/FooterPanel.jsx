@@ -13,6 +13,7 @@ import { STANCE_COLORS } from './Graph';
 const STANCE_LABELS = {
     supports: 'Supports this claim',
     refutes: 'Refutes this claim',
+    mixed: 'Cuts both ways on this claim',
     neutral: 'Does not test this claim',
 };
 
@@ -21,6 +22,31 @@ const STRENGTH_COLORS = {
     moderate: '#6366f1',
     limited: '#f59e0b',
     mixed: '#94a3b8',
+};
+
+const TestedAs = ({ node }) => {
+    // Only worth showing where the two wordings diverge - i.e. where the
+    // headline is prescriptive and no study could test it verbatim. The reader
+    // asked their question in everyday terms; this is the honest translation
+    // the evidence was actually graded against.
+    if (!node.isPrescriptive || !node.testedAs) return null;
+    return (
+        <div style={{
+            margin: '10px 0 4px', padding: '8px 12px',
+            background: '#f8fafc', border: '1px solid #e2e8f0',
+            borderLeft: '3px solid #94a3b8', borderRadius: '6px',
+        }}>
+            <span style={{
+                display: 'block', fontSize: '0.66rem', fontWeight: 700,
+                textTransform: 'uppercase', letterSpacing: '0.07em', color: '#94a3b8',
+            }}>
+                what the evidence was tested against
+            </span>
+            <span style={{ fontSize: '0.86rem', color: '#475569', lineHeight: 1.45 }}>
+                {node.testedAs}
+            </span>
+        </div>
+    );
 };
 
 const Badge = ({ text, colour }) => (
@@ -99,7 +125,7 @@ export const FooterPanel = ({ selected, hovered }) => {
                         </>
                     )}
 
-                    {node.type === 'claim' && (() => {
+                    {(node.type === 'claim' || node.type === 'claim-anchor') && (() => {
                         const decided = (node.supports || 0) + (node.refutes || 0);
                         const verdict = verdictOf(node.netSupport || 0, decided);
                         return (
@@ -110,6 +136,7 @@ export const FooterPanel = ({ selected, hovered }) => {
                                     <span style={{ color: verdict.colour, fontWeight: 700 }}>{verdict.text}</span>
                                     {node.ageRange && <> • <span>{node.ageRange}</span></>}
                                 </div>
+                                <TestedAs node={node} />
                                 {node.hasEvidence ? (
                                     <>
                                         <StatRow>
@@ -169,6 +196,29 @@ export const FooterPanel = ({ selected, hovered }) => {
                                     {node.stanceSummary && (
                                         <p style={{ margin: '4px 0 0', fontSize: '0.9rem', color: '#334155', lineHeight: 1.5 }}>
                                             {node.stanceSummary}
+                                        </p>
+                                    )}
+                                    {/* The reasoning behind the badge. Shown so a
+                                        verdict can be checked against the result it
+                                        was drawn from - if these two disagree, the
+                                        verdict is wrong and you can see it. */}
+                                    {node.finding && (
+                                        <p style={{
+                                            margin: '8px 0 0', paddingTop: '8px',
+                                            borderTop: `1px dashed ${STANCE_COLORS[node.stance]}44`,
+                                            fontSize: '0.82rem', color: '#64748b', lineHeight: 1.45,
+                                        }}>
+                                            <span style={{
+                                                textTransform: 'uppercase', letterSpacing: '0.06em',
+                                                fontSize: '0.68rem', fontWeight: 700, color: '#94a3b8',
+                                            }}>
+                                                paper found
+                                            </span>
+                                            <br />
+                                            {node.finding}
+                                            {node.direction && (
+                                                <span style={{ color: '#94a3b8' }}> — {node.direction}</span>
+                                            )}
                                         </p>
                                     )}
                                 </div>

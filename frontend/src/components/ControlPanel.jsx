@@ -15,6 +15,10 @@ export const ControlPanel = ({
     onClaimSelect,
     onBackToTopics,
     onBackToClaims,
+    evidenceXAxis,
+    onEvidenceXAxisChange,
+    reading,
+    onReadingChange,
 }) => {
     const titles = {
         TOPICS: 'Map of Baby Science by Topic',
@@ -37,10 +41,55 @@ export const ControlPanel = ({
                         ← All topics
                     </button>
                 )}
+                {/* How a two-sided paper is counted. Shown on both scatter
+                    screens, because a claim's own position depends on it. */}
+                {(viewMode === 'CLAIMS' || viewMode === 'EVIDENCE') && (
+                    <div className="axis-toggle" role="group" aria-label="Reading of mixed evidence">
+                        <span className="axis-toggle-label" title="How papers that cut both ways are counted">
+                            mixed evidence
+                        </span>
+                        {[
+                            { key: 'conservative', label: 'Conservative', hint: 'A mixed paper counts as supporting - the claim is technically upheld' },
+                            { key: 'balanced', label: 'Balanced', hint: 'A mixed paper takes no side and sits on the midline' },
+                            { key: 'liberal', label: 'Liberal', hint: 'A mixed paper counts as refuting - its caveats carry equal weight' },
+                        ].map(opt => (
+                            <button
+                                key={opt.key}
+                                className={`axis-toggle-btn${reading === opt.key ? ' is-active' : ''}`}
+                                aria-pressed={reading === opt.key}
+                                title={opt.hint}
+                                onClick={() => onReadingChange(opt.key)}
+                            >
+                                {opt.label}
+                            </button>
+                        ))}
+                    </div>
+                )}
+
                 {viewMode === 'EVIDENCE' && (
-                    <button className="back-to-galaxy" onClick={onBackToClaims}>
-                        ← {topicName || 'Claims'}
-                    </button>
+                    <>
+                        <button className="back-to-galaxy" onClick={onBackToClaims}>
+                            ← {topicName || 'Claims'}
+                        </button>
+                        {/* Only the horizontal axis is swappable. Stance owns the
+                            vertical everywhere, so it is never up for grabs. */}
+                        <div className="axis-toggle" role="group" aria-label="Horizontal axis">
+                            <span className="axis-toggle-label">x axis</span>
+                            {[
+                                { key: 'strength', label: 'Study strength' },
+                                { key: 'year', label: 'Publication year' },
+                            ].map(opt => (
+                                <button
+                                    key={opt.key}
+                                    className={`axis-toggle-btn${evidenceXAxis === opt.key ? ' is-active' : ''}`}
+                                    aria-pressed={evidenceXAxis === opt.key}
+                                    onClick={() => onEvidenceXAxisChange(opt.key)}
+                                >
+                                    {opt.label}
+                                </button>
+                            ))}
+                        </div>
+                    </>
                 )}
             </div>
 

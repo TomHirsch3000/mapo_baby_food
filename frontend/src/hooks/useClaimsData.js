@@ -32,6 +32,51 @@ const countToRadius = (count, min, max, ceiling) => {
     return min + (max - min) * Math.min(1, Math.max(0, frac));
 };
 
+// At most this many neutral papers survive the filter below, however
+// well-connected they are. A claim with 40 well-cited background papers is
+// still a claim whose evidence view is unreadable.
+const MAX_NEUTRALS_SHOWN = 8;
+
+/**
+ * Decide which neutral papers earn a place on the map.
+ *
+ * A neutral paper took no position on the claim, so it contributes nothing to
+ * the verdict and nothing to either axis - it is pure clutter unless the field
+ * itself treats it as load-bearing. The proxy for that is how often the claim's
+ * OTHER papers cite it.
+ *
+ * The bar has to be relative, not absolute. Citation density varies more than
+ * fivefold between claims (74 edges across screen_language_delay's papers
+ * against 359 across peanut_intro_early's), so a fixed "degree >= 3" keeps 61%
+ * of one claim's neutrals and 14% of another's. Instead a neutral has to be
+ * cited as often as a typical DECISIVE paper in the same claim, which
+ * calibrates itself to whatever that literature looks like.
+ */
+const selectNeutrals = (papers, edges) => {
+    const degree = new Map(papers.map(p => [p.id, 0]));
+    (edges || []).forEach(e => {
+        if (degree.has(e.source)) degree.set(e.source, degree.get(e.source) + 1);
+        if (degree.has(e.target)) degree.set(e.target, degree.get(e.target) + 1);
+    });
+
+    const decisive = papers.filter(p => p.stance === 'supports' || p.stance === 'refutes');
+    const neutral = papers.filter(p => p.stance === 'neutral');
+
+    const decisiveDegrees = decisive.map(p => degree.get(p.id) || 0).sort((a, b) => a - b);
+    const medianDecisive = decisiveDegrees.length
+        ? decisiveDegrees[Math.floor(decisiveDegrees.length / 2)]
+        : 0;
+    // Never let the bar fall to zero, or an unconnected claim keeps everything.
+    const bar = Math.max(1, medianDecisive);
+
+    const kept = neutral
+        .filter(p => (degree.get(p.id) || 0) >= bar)
+        .sort((a, b) => (degree.get(b.id) || 0) - (degree.get(a.id) || 0))
+        .slice(0, MAX_NEUTRALS_SHOWN);
+
+    return { kept, keptIds: new Set(kept.map(p => p.id)), degree, bar };
+};
+
 export const useClaimsData = (viewMode, activeTopic, activeClaim) => {
     const [topicsData, setTopicsData] = useState(null);
     const [topicClaims, setTopicClaims] = useState(null);
@@ -155,6 +200,8 @@ export const useClaimsData = (viewMode, activeTopic, activeClaim) => {
             type: 'claim',
             name: c.claim,
             claim: c.claim,
+            testedAs: c.testedAs,
+            isPrescriptive: c.isPrescriptive,
             group: c.group,
             topic: c.topic,
             topicName: c.topicName,
@@ -167,6 +214,12 @@ export const useClaimsData = (viewMode, activeTopic, activeClaim) => {
             openAlexCount: c.openAlexCount,
             hasEvidence: c.hasEvidence,
             netSupport: c.netSupport,
+            netSupportByReading: {
+                conservative: c.netSupportConservative ?? c.netSupport,
+                balanced: c.netSupportBalanced ?? c.netSupport,
+                liberal: c.netSupportLiberal ?? c.netSupport,
+            },
+            mixed: c.mixed,
             evidenceQuality: c.evidenceQuality,
             consensus: c.consensus,
             evidenceVolume: c.evidenceVolume,
@@ -181,9 +234,25 @@ export const useClaimsData = (viewMode, activeTopic, activeClaim) => {
     }, [viewMode, topicClaims]);
 
     // ── Evidence nodes ───────────────────────────────────────────────────────
+
+    // Which papers are on the map, resolved ONCE. Both the node list and the
+    // edge list derive from this: d3.forceLink throws on any edge naming a node
+    // it cannot find, so an edge surviving the neutral filter that its endpoint
+    // did not would blank the whole view.
+    const visibleEvidence = useMemo(() => {
+        if (viewMode !== 'EVIDENCE' || !evidence) return null;
+        const all = evidence.papers || [];
+        const { keptIds, degree } = selectNeutrals(all, evidence.edges);
+        const papers = all.filter(p => p.stance !== 'neutral' || keptIds.has(p.id));
+        return { papers, degree, ids: new Set(papers.map(p => p.id)) };
+    }, [viewMode, evidence]);
+
     const evidenceNodes = useMemo(() => {
-        if (viewMode !== 'EVIDENCE' || !evidence) return [];
-        return (evidence.papers || []).map(p => ({
+        if (viewMode !== 'EVIDENCE' || !evidence || !visibleEvidence) return [];
+
+        const { papers: visible, degree } = visibleEvidence;
+
+        const papers = visible.map(p => ({
             id: p.id,
             type: 'paper',
             title: p.title,
@@ -199,6 +268,8 @@ export const useClaimsData = (viewMode, activeTopic, activeClaim) => {
             stance: p.stance,
             confidence: p.confidence,
             stanceSummary: p.stanceSummary,
+            finding: p.finding,
+            direction: p.direction,
             evidenceStrength: p.evidenceStrength,
             studyType: p.studyType,
             weight: p.weight,
@@ -206,27 +277,85 @@ export const useClaimsData = (viewMode, activeTopic, activeClaim) => {
             xGroup: p.stance,
             primaryField: p.studyType,
             val: Math.min(46, Math.max(8, Math.sqrt(p.citationCount || 0) * 2)),
+            localCitations: degree.get(p.id) || 0,
             data: p,
         }));
-    }, [viewMode, evidence]);
+
+        // The claim travels down into its own evidence view as a node, holding
+        // the position the claims screen gave it. Reading the cloud against a
+        // fixed anchor is the whole point: you can see at a glance whether the
+        // verdict sits where the bulk of the papers do, or whether a handful of
+        // heavily-cited studies dragged it there.
+        const c = evidence.claim;
+        if (!c) return papers;
+
+        const years = papers.map(p => p.year).filter(y => y && y > 1900).sort((a, b) => a - b);
+        const medianYear = years.length ? years[Math.floor(years.length / 2)] : null;
+
+        return [...papers, {
+            id: `claim-anchor:${c.id}`,
+            type: 'claim-anchor',
+            name: c.claim,
+            claim: c.claim,
+            testedAs: c.testedAs,
+            isPrescriptive: c.isPrescriptive,
+            netSupport: c.netSupport ?? 0,
+            netSupportByReading: {
+                conservative: c.netSupportConservative ?? c.netSupport ?? 0,
+                balanced: c.netSupportBalanced ?? c.netSupport ?? 0,
+                liberal: c.netSupportLiberal ?? c.netSupport ?? 0,
+            },
+            evidenceQuality: c.evidenceQuality ?? 0,
+            medianYear,
+            supports: c.supports,
+            refutes: c.refutes,
+            neutral: c.neutral,
+            mixedCount: c.mixed,
+            paperCount: c.paperCount,
+            // The anchor reuses the claims screen's footer panel verbatim, so it
+            // needs the same fields that panel reads.
+            group: c.group,
+            topicName: c.topicName,
+            ageRange: c.ageRange,
+            hasEvidence: c.hasEvidence,
+            openAlexCount: c.openAlexCount,
+            unevaluated: c.unevaluated,
+            strengthMix: c.strengthMix,
+            consensus: c.consensus,
+            consensus: c.consensus,
+            val: 52,
+            citationCount: 0,
+            data: c,
+        }];
+    }, [viewMode, evidence, visibleEvidence]);
 
     const evidenceEdges = useMemo(() => {
         if (viewMode !== 'EVIDENCE' || !evidence) return NO_EDGES;
-        const ids = new Set((evidence.papers || []).map(p => p.id));
+        const ids = visibleEvidence ? visibleEvidence.ids : new Set();
         return (evidence.edges || [])
             .filter(e => ids.has(e.source) && ids.has(e.target))
             .map(e => ({ source: e.source, target: e.target, importance: 1 }));
-    }, [viewMode, evidence]);
+    }, [viewMode, evidence, visibleEvidence]);
 
     const evidenceStats = useMemo(() => {
         if (!evidence) return null;
-        const stats = { supports: 0, refutes: 0, neutral: 0, unevaluated: 0 };
+        const stats = { supports: 0, refutes: 0, neutral: 0, mixed: 0, unevaluated: 0 };
         (evidence.papers || []).forEach(p => {
             if (stats[p.stance] !== undefined) stats[p.stance] += 1;
             else stats.unevaluated += 1;
         });
-        return { ...stats, claim: evidence.claim };
-    }, [evidence]);
+        // How many neutrals actually made it onto the map. Reported in the
+        // banner so a filtered paper is never silently disappeared.
+        const shown = visibleEvidence
+            ? visibleEvidence.papers.filter(p => p.stance === 'neutral').length
+            : stats.neutral;
+        return {
+            ...stats,
+            neutralShown: shown,
+            neutralHidden: stats.neutral - shown,
+            claim: evidence.claim,
+        };
+    }, [evidence, visibleEvidence]);
 
     const nodes =
         viewMode === 'TOPICS' ? topicNodes :

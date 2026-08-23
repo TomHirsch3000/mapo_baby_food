@@ -24,11 +24,22 @@ export default function App() {
   });
 
   const [viewMode, setViewMode] = useState('TOPICS');
+  // Which quantity the evidence view's horizontal axis carries. Stance is
+  // always vertical, on both screens, so it is never toggleable.
+  const [evidenceXAxis, setEvidenceXAxis] = useState('strength');
+  // How a paper that cuts both ways is counted. Drives both the mixed papers'
+  // own Y position and the claim's, via the per-reading netSupport the backend
+  // ships. See LayoutEngine.MIXED_SIGN.
+  const [reading, setReading] = useState('balanced');
   const [activeTopic, setActiveTopic] = useState(null);
   const [activeClaim, setActiveClaim] = useState(null);
   const [selected, setSelected] = useState(null);
   const [hovered, setHovered] = useState(null);
 
+  // One-shot: set when the user navigates BACK, so the Graph does not re-focus a
+  // stale selection mid-transition. It MUST be cleared on the next forward
+  // navigation - left set, it permanently disables click-to-select, because the
+  // Graph reads `selected` only when this is false.
   const isReturningRef = useRef(false);
 
   const {
@@ -45,6 +56,7 @@ export default function App() {
   // ── Navigation ────────────────────────────────────────────────────────────
 
   const openTopic = (topicId) => {
+    isReturningRef.current = false;
     setActiveTopic(topicId);
     setActiveClaim(null);
     setViewMode('CLAIMS');
@@ -52,6 +64,7 @@ export default function App() {
   };
 
   const openClaim = (topicId, claimId) => {
+    isReturningRef.current = false;
     setActiveTopic(topicId);
     setActiveClaim(claimId);
     setViewMode('EVIDENCE');
@@ -61,6 +74,8 @@ export default function App() {
   const handleNodeClick = (d) => {
     if (viewMode === 'TOPICS') return openTopic(d.id);
     if (viewMode === 'CLAIMS') return openClaim(activeTopic, d.id);
+    if (d.type === 'claim-anchor') return;   // a reference mark, not a paper
+    isReturningRef.current = false;
     setSelected(d);   // EVIDENCE: select the paper
   };
 
@@ -126,6 +141,10 @@ export default function App() {
         claimText={claimText}
         claimIndex={claimIndex}
         onClaimSelect={handleClaimSelect}
+        evidenceXAxis={evidenceXAxis}
+        onEvidenceXAxisChange={setEvidenceXAxis}
+        reading={reading}
+        onReadingChange={setReading}
         onBackToTopics={handleBackToTopics}
         onBackToClaims={handleBackToClaims}
       />
@@ -137,6 +156,8 @@ export default function App() {
         layoutMode="CENTRAL"
         selected={selected}
         hovered={hovered}
+        evidenceXAxis={evidenceXAxis}
+        reading={reading}
         onNodeClick={handleNodeClick}
         onBackgroundClick={handleBackgroundClick}
         onNodeHover={setHovered}
@@ -160,8 +181,8 @@ export default function App() {
       {viewMode === 'CLAIMS' && topicClaims && (
         <div style={bannerStyle}>
           <span style={{ color: '#64748b' }}>
-            Left→right: <strong style={{ color: '#334155' }}>how true</strong> ·
-            Up→down: <strong style={{ color: '#334155' }}>how strong the studies are</strong> ·
+            Up→down: <strong style={{ color: '#334155' }}>how true</strong> ·
+            Left→right: <strong style={{ color: '#334155' }}>how strong the studies are</strong> ·
             Size: <strong style={{ color: '#334155' }}>how much has been published</strong>
           </span>
         </div>
@@ -173,7 +194,18 @@ export default function App() {
           <span style={dotStyle}>·</span>
           <span style={{ color: STANCE_COLORS.refutes, fontWeight: 700 }}>{evidenceStats.refutes}</span> refute
           <span style={dotStyle}>·</span>
+          {evidenceStats.mixed > 0 && (
+            <>
+              <span style={{ color: STANCE_COLORS.mixed, fontWeight: 700 }}>{evidenceStats.mixed}</span> mixed
+              <span style={dotStyle}>·</span>
+            </>
+          )}
           <span style={{ color: STANCE_COLORS.neutral, fontWeight: 700 }}>{evidenceStats.neutral}</span> neutral
+          {evidenceStats.neutralHidden > 0 && (
+            <span style={{ color: '#94a3b8' }}>
+              ({evidenceStats.neutralHidden} hidden, {evidenceStats.neutralShown} well-cited shown)
+            </span>
+          )}
           {evidenceStats.unevaluated > 0 && (
             <>
               <span style={dotStyle}>·</span>
@@ -181,7 +213,11 @@ export default function App() {
             </>
           )}
           <span style={dotStyle}>·</span>
-          <span style={{ color: '#94a3b8' }}>oldest left, newest right</span>
+          <span style={{ color: '#94a3b8' }}>
+            {evidenceXAxis === 'year'
+              ? 'oldest left, newest right'
+              : 'weaker studies left, stronger right'}
+          </span>
         </div>
       )}
 
