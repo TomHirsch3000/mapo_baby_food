@@ -173,6 +173,9 @@ export const FooterPanel = ({ selected, hovered }) => {
                                 {node.citationCount !== undefined && <> • <span>{node.citationCount} citations</span></>}
                                 {node.studyType && <> • <span>{node.studyType}</span></>}
                                 {node.venue && <> • <span>{node.venue}</span></>}
+                                {node.studyDesign && (
+                                    <Badge text={node.studyDesign} colour="#64748b" />
+                                )}
                                 {node.evidenceStrength && (
                                     <Badge text={`${node.evidenceStrength} evidence`}
                                            colour={STRENGTH_COLORS[node.evidenceStrength] || '#94a3b8'} />

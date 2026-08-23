@@ -34,6 +34,7 @@ sys.path.insert(0, SCRIPT_DIR)
 
 import console
 from claims import CLAIMS, TOPICS, claims_for_topic, groups_for_topic, tested_text
+import design
 
 console.init()
 
@@ -45,9 +46,14 @@ STRENGTH_WEIGHT = {"strong": 3.0, "moderate": 2.0, "mixed": 1.5, "limited": 1.0}
 DEFAULT_WEIGHT = 1.0
 
 
-def paper_weight(evidence_strength, citations, confidence):
-    """Quality x impact x how sure the evaluator was."""
-    base = STRENGTH_WEIGHT.get(evidence_strength, DEFAULT_WEIGHT)
+def paper_weight(study_type, citations, confidence):
+    """Quality x impact x how sure the evaluator was.
+
+    Quality is the study DESIGN, ranked on an evidence hierarchy - not the
+    model's own strong/moderate/limited label, which conflated design with
+    sample size and ranked position papers above meta-analyses. See design.py.
+    """
+    base = 1.0 + 2.0 * design.rank_of(study_type)     # 1.0 .. 3.0, as before
     impact = 1.0 + math.log10(1 + max(0, citations or 0))
     certainty = 0.5 + 0.5 * ((confidence if confidence is not None else 50) / 100)
     return base * impact * certainty
@@ -91,7 +97,7 @@ def summarise_claim(conn, claim_key, rows, openalex_count):
             counts["unevaluated"] += 1
             continue
         counts[stance] += 1
-        weights[stance] += paper_weight(r["evidence_strength"], r["cited_by_count"],
+        weights[stance] += paper_weight(r["study_type"], r["cited_by_count"],
                                         r["confidence"])
         if r["evidence_strength"] in strength_mix:
             strength_mix[r["evidence_strength"]] += 1
@@ -128,9 +134,9 @@ def summarise_claim(conn, claim_key, rows, openalex_count):
     # alone cannot distinguish.
     assessed = [r for r in rows if r["stance"]]
     if assessed:
-        quality_sum = sum(STRENGTH_WEIGHT.get(r["evidence_strength"], DEFAULT_WEIGHT)
-                          for r in assessed)
-        evidence_quality = (quality_sum / len(assessed) - DEFAULT_WEIGHT) / (3.0 - DEFAULT_WEIGHT)
+        # Mean design rank, which is already 0..1 - so a claim's X is exactly the
+        # mean of its papers' X, the same identity the evidence view relies on.
+        evidence_quality = sum(design.rank_of(r["study_type"]) for r in assessed) / len(assessed)
     else:
         evidence_quality = 0.0
 
@@ -187,6 +193,11 @@ def build_paper_node(row):
         "stanceSummary": row["stance_summary"] or "",
         "evidenceStrength": row["evidence_strength"] or "",
         "studyType": row["study_type"] or "",
+        # Canonical design and its place on the evidence hierarchy. designRank
+        # drives the horizontal axis; the raw studyType is kept so a reader can
+        # see what the model actually called it.
+        "studyDesign": design.design_of(row["study_type"]),
+        "designRank": round(design.rank_of(row["study_type"]), 3),
         # The model's own restatement of the result, and the agree/disagree call
         # it made before picking a stance. Surfaced so a reader can see WHY a
         # badge says what it says, and catch it when the two disagree.

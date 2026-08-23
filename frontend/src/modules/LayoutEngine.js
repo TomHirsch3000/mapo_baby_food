@@ -196,11 +196,16 @@ export class LayoutEngine {
     // Placing all refutations on one line would throw away the evaluator's
     // certainty, which is the only continuous signal a single paper carries.
 
-    // Normalised from the backend's STRENGTH_WEIGHT (strong 3, moderate 2,
-    // mixed 1.5, limited 1) via (w - 1) / 2 -- the identical transform
-    // build_claims_data.py uses for a claim's evidenceQuality. That keeps the
-    // claim anchor's X honest: it is exactly the mean of its papers' X.
-    static STRENGTH_X = { strong: 1.0, moderate: 0.5, mixed: 0.25, limited: 0.0 };
+    // X comes from designRank, computed in backend/design.py: the paper's study
+    // design placed on an evidence hierarchy, 0..1. It replaced the model's own
+    // strong/moderate/limited label, which mixed design with sample size - so a
+    // modest RCT scored "moderate" and landed dead centre - and whose resulting
+    // order was not a hierarchy at all: position papers came out above
+    // meta-analyses, and an RCT spelled out in full ranked below a case report.
+    //
+    // A claim's evidenceQuality is the mean of its papers' designRank, so the
+    // anchor's X is still exactly the centroid of the cloud beneath it.
+    static DESIGN_X_FALLBACK = 0.30;   // unclassified; matches design.py
 
     static STANCE_SIGN = { supports: 1, refutes: -1, neutral: 0, mixed: 0 };
 
@@ -256,11 +261,11 @@ export class LayoutEngine {
 
         const xValueOf = (n) => useYear
             ? yearScale((n.year && n.year > 1900) ? n.year : minYear)
-            : strengthScale(LayoutEngine.STRENGTH_X[n.evidenceStrength] ?? 0.25);
+            : strengthScale(n.designRank ?? LayoutEngine.DESIGN_X_FALLBACK);
 
-        // Strength has only four levels, so in strength mode every paper would
-        // land on one of four hairlines. A deterministic per-node offset gives
-        // each band width to breathe in; collision does the rest.
+        // Designs are discrete, so papers still stack into columns. A
+        // deterministic per-node offset gives each band width to breathe in;
+        // collision does the rest.
         const jitterSpan = useYear ? 30 : plotW * 0.05;
 
         const mixedSign = LayoutEngine.MIXED_SIGN[reading] ?? 0;
@@ -345,7 +350,7 @@ export class LayoutEngine {
         if (anchor) {
             anchor._targetX = useYear
                 ? yearScale(anchor.medianYear ?? minYear)
-                : strengthScale(anchor.evidenceQuality ?? 0);
+                : strengthScale(anchor.evidenceQuality ?? 0);   // mean designRank
             // The claim moves with the reading too, using the netSupport the
             // backend computed for that same interpretation.
             anchor._targetY = plotCY + yScale(LayoutEngine.netFor(anchor, reading));
@@ -357,8 +362,16 @@ export class LayoutEngine {
             minYear, maxYear, plotW, plotH, plotCY,
             xAxisMode, reading, yScale, neutralBox,
             xScale: useYear ? yearScale : strengthScale,
-            strengthLevels: Object.entries(LayoutEngine.STRENGTH_X)
-                .map(([key, v]) => ({ key, x: strengthScale(v) })),
+            // A readable subset of the ladder - all nineteen rungs would collide.
+            strengthLevels: [
+                ['case report', 0.20],
+                ['cross-sectional', 0.30],
+                ['case-control', 0.40],
+                ['cohort', 0.50],
+                ['trial', 0.72],
+                ['randomised', 0.88],
+                ['meta-analysis', 1.00],
+            ].map(([key, v]) => ({ key, x: strengthScale(v) })),
         };
 
         sim.force("center", null)

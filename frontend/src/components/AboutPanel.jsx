@@ -174,6 +174,14 @@ export const AboutPanel = ({ open, onClose }) => {
                         screen you can swap the horizontal axis to publication year to see
                         whether a question settled over time or is still being argued.
                     </p>
+                    <p style={{ margin: '10px 0 0', fontSize: '0.85rem', color: '#64748b', lineHeight: 1.55 }}>
+                        “Better studies” means the <strong>study design</strong>, ranked the way
+                        medicine ranks it — meta-analyses and randomised trials furthest right,
+                        then cohorts, then case-control, then cross-sectional surveys, with case
+                        reports, animal work, opinion pieces and guidelines furthest left. A
+                        claim’s position is the average of its own papers, so a claim only sits
+                        right if the studies behind it genuinely do.
+                    </p>
                 </Section>
 
                 <Section title="Colours">
