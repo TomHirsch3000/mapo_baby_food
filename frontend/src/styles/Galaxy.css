@@ -34,6 +34,10 @@
     align-items: center;
 }
 
+/* Two different kinds of text share this slot: short labels on the topic and
+   claim screens ("Sleep", "Screens & Media"), and a whole claim sentence on the
+   evidence screen. The uppercase, wide-tracked, single-line pill suits the
+   first and mangles the second, so the claim gets its own treatment below. */
 .galaxy-title {
     font-family: 'Inter', sans-serif;
     font-weight: 600;
@@ -42,16 +46,40 @@
     letter-spacing: 3px;
     font-size: 1.2rem;
     pointer-events: auto;
-    background: rgba(255, 255, 255, 0.6);
+    background: rgba(255, 255, 255, 0.72);
     padding: 8px 20px;
     border-radius: 30px;
     backdrop-filter: blur(8px);
     border: 1px solid rgba(0, 0, 0, 0.05);
     box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
-    max-width: 50vw;
+    /* Keep clear of the controls pinned at either edge: the widest left stack
+       (the mixed-evidence toggle) is ~410px and the search plus ? is ~330px. */
+    max-width: clamp(300px, calc(100vw - 840px), 720px);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+    text-align: center;
+}
+
+/* On the evidence screen this line IS the claim - the single most important
+   sentence on the page, and the thing the reader came to check. It must never
+   be truncated, so it wraps instead of ellipsing, and drops the uppercase and
+   3px tracking, which are for short labels and cost roughly a fifth of the
+   available width on an 88-character sentence. */
+.galaxy-title.is-claim {
+    text-transform: none;
+    letter-spacing: 0.005em;
+    font-weight: 650;
+    font-size: 1.04rem;
+    line-height: 1.4;
+    white-space: normal;
+    overflow: visible;
+    text-overflow: clip;
+    text-wrap: balance;      /* even line lengths rather than a one-word last line */
+    hyphens: none;
+    padding: 10px 24px;
+    border-radius: 20px;
+    background: rgba(255, 255, 255, 0.86);
 }
 
 .galaxy-select {
@@ -282,7 +310,13 @@
 @media (max-width: 768px) {
     .footer-panels { grid-template-columns: 1fr; }
     .footer-panel.hover-panel { display: none; }
-    .galaxy-title { font-size: 1rem; letter-spacing: 2px; padding: 6px 16px; }
+    .galaxy-title {
+        font-size: 1rem; letter-spacing: 2px; padding: 6px 16px;
+        max-width: 86vw;
+    }
+    /* The side controls stack under each other on narrow screens, so the title
+       is no longer competing with them for horizontal room. */
+    .galaxy-title.is-claim { font-size: 0.95rem; max-width: 90vw; }
     .back-to-galaxy { padding: 10px 20px; font-size: 0.85rem; }
 }
 

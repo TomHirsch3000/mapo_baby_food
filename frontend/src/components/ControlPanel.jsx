@@ -109,7 +109,9 @@ export const ControlPanel = ({
                 >?</button>
             </div>
 
-            <div className="galaxy-title">{titles[viewMode]}</div>
+            <div className={`galaxy-title${viewMode === 'EVIDENCE' ? ' is-claim' : ''}`}>
+                {titles[viewMode]}
+            </div>
         </div>
     );
 };
