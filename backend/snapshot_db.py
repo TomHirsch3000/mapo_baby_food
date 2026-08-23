@@ -10,6 +10,18 @@ WAL, and copying the three files separately can produce an inconsistent set.
 VACUUM INTO takes a transactionally consistent snapshot of a live database into
 one new file, and compacts it on the way out. It is safe to run mid-evaluation.
 
+The snapshot it writes is committed to git. That is affordable because VACUUM
+lays pages out deterministically, so successive versions delta down to about
+20 KB per 300 new verdicts against a 4.4 MB first commit - measured, not assumed.
+So the usual way to move work between machines is simply:
+
+    python backend/snapshot_db.py && git commit -am "refresh db snapshot"
+    # on the other machine
+    git pull && cp data/claims-snapshot.db data/claims.db
+
+--serve remains for when the machines are on the same wifi and you would rather
+not push 4 MB through GitHub.
+
 Usage:
     python backend/snapshot_db.py                        # -> data/claims-snapshot.db
     python backend/snapshot_db.py --out ~/Desktop/x.db

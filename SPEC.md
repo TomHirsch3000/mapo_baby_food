@@ -295,8 +295,8 @@ re-run to make progress.
 
 ### What lives in git
 
-The database does not. The **built JSON does**, and it carries every verdict
-*and the reasoning behind it*.
+The **built JSON**, carrying every verdict *and the reasoning behind it* — and a
+**vacuumed snapshot of the database** alongside it.
 
 This is a deliberate durability decision, not an accident of `.gitignore`.
 Verdicts cost hours of local inference to produce, so they must survive a move
@@ -304,8 +304,17 @@ to another machine without being recomputed — and recomputation is not even
 neutral, since a different model build will quietly score the same abstract
 differently and churn conclusions that are already published.
 
-Consequence: JSON is the durable record, the database is a working artifact,
-and there must always be a path to rehydrate the second from the first.
+Consequence: JSON is the durable record, the live database is a working
+artifact, and there must always be a path to rehydrate the second from the
+first.
+
+The snapshot is a convenience on top of that, not a replacement for it. It is
+committed because a vacuumed SQLite file lays its pages out deterministically,
+so git deltas successive versions down to roughly 20 KB per 300 new verdicts
+against a 4.4 MB first commit — cheap enough that moving between machines needs
+no file transfer, no cloud account and no re-import. The *live* database stays
+out of git: it runs in WAL mode, so recent commits sit in a sidecar file and it
+cannot be copied consistently while anything is writing to it.
 
 ### Costs and limits
 

@@ -11,11 +11,21 @@ build/
 venv/
 env/
 
-# Data (large files — import locally)
+# Data
+# The live working database stays out: it is in WAL mode, churns on every
+# evaluation, and cannot be copied safely while anything is writing to it.
 data/*.db
 # WAL mode leaves these two beside the DB; they are transient and machine-local.
 data/*.db-wal
 data/*.db-shm
+
+# The vacuumed snapshot IS committed, so a second machine gets the whole corpus
+# without re-importing from OpenAlex or re-running hours of local inference.
+# Affordable because VACUUM INTO lays pages out deterministically, so git deltas
+# successive versions to almost nothing: 4.4 MB for the first commit, then about
+# 20 KB per 300 new verdicts - roughly 340 KB for an entire re-run. Measured, not
+# assumed. Refresh it with `python backend/snapshot_db.py`.
+!data/claims-snapshot.db
 data/*.json
 
 # Pre-built frontend JSON IS committed so Vercel can serve it statically
