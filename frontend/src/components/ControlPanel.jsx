@@ -19,6 +19,7 @@ export const ControlPanel = ({
     onEvidenceXAxisChange,
     reading,
     onReadingChange,
+    onOpenAbout,
 }) => {
     const titles = {
         TOPICS: 'Map of Baby Science by Topic',
@@ -93,8 +94,19 @@ export const ControlPanel = ({
                 )}
             </div>
 
-            <div style={{ position: 'absolute', top: 20, right: 20, pointerEvents: 'auto' }}>
+            <div style={{
+                position: 'absolute', top: 20, right: 20, pointerEvents: 'auto',
+                display: 'flex', alignItems: 'center', gap: 10,
+            }}>
                 <SearchBar claimIndex={claimIndex} onClaimSelect={onClaimSelect} />
+                {/* Nothing on this map is guessable without it - the axes, the
+                    sizes and the limits all need stating somewhere reachable. */}
+                <button
+                    className="about-button"
+                    onClick={onOpenAbout}
+                    aria-label="How to read this map"
+                    title="How to read this map"
+                >?</button>
             </div>
 
             <div className="galaxy-title">{titles[viewMode]}</div>

@@ -8,6 +8,7 @@ import { useClaimsData } from "./hooks/useClaimsData";
 import { Graph, STANCE_COLORS } from "./components/Graph";
 import { ControlPanel } from "./components/ControlPanel";
 import { FooterPanel } from "./components/FooterPanel";
+import { AboutPanel } from "./components/AboutPanel";
 
 /**
  * Three screens, one drill-down:
@@ -31,6 +32,7 @@ export default function App() {
   // own Y position and the claim's, via the per-reading netSupport the backend
   // ships. See LayoutEngine.MIXED_SIGN.
   const [reading, setReading] = useState('balanced');
+  const [aboutOpen, setAboutOpen] = useState(false);
   const [activeTopic, setActiveTopic] = useState(null);
   const [activeClaim, setActiveClaim] = useState(null);
   const [selected, setSelected] = useState(null);
@@ -145,6 +147,7 @@ export default function App() {
         onEvidenceXAxisChange={setEvidenceXAxis}
         reading={reading}
         onReadingChange={setReading}
+        onOpenAbout={() => setAboutOpen(true)}
         onBackToTopics={handleBackToTopics}
         onBackToClaims={handleBackToClaims}
       />
@@ -239,6 +242,8 @@ export default function App() {
       {error && (
         <div style={{ ...bannerStyle, color: '#ef4444' }}>⚠ {error}</div>
       )}
+
+      <AboutPanel open={aboutOpen} onClose={() => setAboutOpen(false)} />
 
       <FooterPanel selected={selected} hovered={hovered} />
     </div>
