@@ -15,31 +15,72 @@ export class LayoutEngine {
 
     // --- Topics (landing) Layout ---
     //
-    // Flat-top hexagons on a true hex grid: one in the centre, four on the
-    // diagonal neighbour cells, so all five edges meet exactly.
+    // Flat-top hexagons on a true hex grid, filled from the centre outwards in
+    // rings, so all shared edges meet exactly however many topics there are.
+    //
+    // This used to be five hand-placed cells. Splitting the five broad topics
+    // into fourteen specific ones - allergens and first foods and milk are
+    // separate decisions, made at separate moments - meant the grid had to be
+    // generated rather than enumerated.
     //
     // Tessellation forces a uniform hexagon size, so on this screen node size
     // no longer encodes paper count - the count is in the label instead. Size
     // still encodes literature volume on the claims screen, where the range is
     // three orders of magnitude and actually worth seeing.
 
-    static TOPIC_HEX_R = 190;
+    static TOPIC_HEX_R = 150;
+
+    /**
+     * Hexagon centres on a true hex grid, arranged as offset columns.
+     *
+     * For this orientation - vertices left and right, so columns interlock -
+     * neighbours sit at (+-1.5R, +-0.866R) and (0, +-sqrt(3)R). Stepping one
+     * column right and half a row down therefore lands exactly on a shared
+     * edge, which is what makes the block tessellate.
+     *
+     * Column count is chosen to match the canvas rather than fixed, because a
+     * ring-filled cluster of fourteen comes out markedly taller than it is wide
+     * and wastes a landscape screen.
+     */
+    static hexCells(count, R, aspect = 1.7) {
+        const colStep = 1.5 * R;
+        const rowStep = Math.sqrt(3) * R;
+
+        // Pick the column count whose resulting block best matches the canvas.
+        let cols = 1, best = Infinity;
+        for (let c = 1; c <= count; c++) {
+            const r = Math.ceil(count / c);
+            const w = (c - 1) * colStep + 2 * R;
+            const h = (r - 1) * rowStep + rowStep;
+            const score = Math.abs((w / h) - aspect);
+            if (score < best) { best = score; cols = c; }
+        }
+        const rows = Math.ceil(count / cols);
+
+        const cells = [];
+        for (let i = 0; i < count; i++) {
+            const col = i % cols;
+            const row = Math.floor(i / cols);
+            // Short final row is centred rather than left-aligned.
+            const inRow = Math.min(cols, count - row * cols);
+            const rowOffset = (cols - inRow) / 2;
+            cells.push({
+                x: (col + rowOffset - (cols - 1) / 2) * colStep,
+                y: (row - (rows - 1) / 2) * rowStep
+                   + ((col + rowOffset) % 2 ? rowStep / 2 : 0),
+            });
+        }
+        return cells;
+    }
 
     applyTopicsLayout(nodes, sim) {
         const R = LayoutEngine.TOPIC_HEX_R;
-        // Flat-top hex neighbours sit at 30/150/210/330 degrees, sqrt(3)*R away.
-        const step = Math.sqrt(3) * R;
-        const dx = step * Math.cos(Math.PI / 6);   // 1.5 * R
-        const dy = step * Math.sin(Math.PI / 6);   // 0.866 * R
-        const cells = [
-            { x: 0, y: 0 },
-            { x: -dx, y: -dy }, { x: dx, y: -dy },
-            { x: -dx, y: dy }, { x: dx, y: dy },
-        ];
+        const aspect = this.height ? (this.width / this.height) * 0.95 : 1.7;
+        const cells = LayoutEngine.hexCells(nodes.length, R, aspect);
 
         // Biggest topic takes the centre cell; nodes arrive sorted by volume.
         nodes.forEach((n, i) => {
-            const cell = cells[i % cells.length];
+            const cell = cells[i];
             n.hexR = R;
             n.fx = cell.x;
             n.fy = cell.y + this.graphCenterY;
@@ -131,7 +172,10 @@ export class LayoutEngine {
             .force("x", d3.forceX(d => d._targetX).strength(0.9))
             .force("y", d3.forceY(d => d._targetY).strength(d => d._inPlot ? 0.9 : 0.7))
             .force("charge", d3.forceManyBody().strength(d => -50 - (d.val || 20)))
-            .force("collide", d3.forceCollide().radius(d => (d.val || 20) + 22).iterations(6));
+            // Generous padding: each node's caption hangs below it, so leaving
+            // only the circle's own radius guarantees text-on-text collisions
+            // that the label pass then has to unpick.
+            .force("collide", d3.forceCollide().radius(d => (d.val || 20) + 40).iterations(8));
 
         return sim;
     }

@@ -31,11 +31,20 @@ OUT_DIR = os.path.normpath(
 # visual cues, not citations. Several obvious articles ("Language acquisition",
 # "Co-sleeping", "Read-aloud") have no lead image at all.
 TOPIC_ARTICLES = {
-    "food":     "Baby food",
-    "sleep":    "Infant bed",
-    "screens":  "Screen time",
-    "activity": "Tummy time",
-    "learning": "Picture book",
+    "allergies":      "Peanut allergy",
+    "solids":         "Baby food",
+    "milk":           "Breastfeeding",
+    "nutrients":      "Multivitamin",
+    "food_safety":    "Honey",
+    "safe_sleep":     "Infant bed",
+    "sleep_patterns": "Sleep",
+    "settling":       "Lullaby",
+    "screen_time":    "Screen time",
+    "screen_effects": "Tablet computer",
+    "motor":          "Tummy time",
+    "active_play":    "Playground",
+    "language":       "Picture book",
+    "play":           "Toy",
 }
 
 

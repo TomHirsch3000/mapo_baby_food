@@ -164,6 +164,59 @@ export const Graph = ({
             sim.tick();
         }
 
+        if (isClaims) resolveLabelOverlaps(currentNodes);
+
+        /**
+         * Push overlapping claim labels apart, vertically.
+         *
+         * The force layout only knows about circles, but each claim also carries
+         * a block of text hanging below it - the claim itself, the for/against
+         * tally, the volume - roughly 60-90px tall and wider than the node. Two
+         * nodes can sit a comfortable distance apart and still have their labels
+         * printed straight through each other, which is what turned a busy
+         * screen into an unreadable one.
+         *
+         * So after the simulation settles, walk the nodes top to bottom and slide
+         * any label that would collide with one already placed far enough down to
+         * clear it. Deterministic, and it never moves a node - only its text -
+         * so the positions still mean exactly what the axes say they mean.
+         */
+        const CHAR_PX = 6.35;          // Inter 12.5px, mixed-case prose
+        const LABEL_LEAD = 10;         // gap between node edge and its label
+        const LABEL_GAP = 8;           // minimum gap between two labels
+
+        const resolveLabelOverlaps = (list) => {
+            const boxes = [];
+            [...list]
+                .sort((a, b) => (a.y - (a.val || 20)) - (b.y - (b.val || 20)))
+                .forEach(d => {
+                    const r = d.val || 20;
+                    const w = Math.max(180, Math.min(240, r * 3.2));
+                    d._labelW = w;
+                    const lines = Math.max(1, Math.ceil(((d.claim || d.name || '').length * CHAR_PX) / w));
+                    const h = lines * 17 + 34;      // text lines + tally + volume
+                    const left = d.x - w / 2;
+                    const right = d.x + w / 2;
+                    let top = d.y + r + LABEL_LEAD;
+
+                    // Slide down past anything it would run into.
+                    let moved = true;
+                    while (moved) {
+                        moved = false;
+                        for (const b of boxes) {
+                            const overlapX = left < b.right && right > b.left;
+                            const overlapY = top < b.bottom && (top + h) > b.top;
+                            if (overlapX && overlapY) {
+                                top = b.bottom + LABEL_GAP;
+                                moved = true;
+                            }
+                        }
+                    }
+                    d._labelDy = top - d.y;          // offset from the node centre
+                    boxes.push({ left, right, top, bottom: top + h });
+                });
+        };
+
         const getEdgeKey = (d) => `${(isClaims || isEvidence) ? "G" : "P"}|${d.source.id || d.source}|${d.target.id || d.target}`;
         const getGradientId = (d) => `link-gradient-${sanitizeId(getEdgeKey(d))}`;
         const defs = svg.select("defs").empty() ? svg.append("defs") : svg.select("defs");
@@ -485,11 +538,15 @@ export const Graph = ({
                     .attr("stroke-width", 2)
                     .attr("stroke-dasharray", d.hasEvidence ? null : "4 3");
 
-                const labelW = Math.max(210, r * 4.5);
-                const labelH = 150;
+                // Narrower than before: r * 4.5 let a big node claim a 290px-wide
+                // strip of the plot for its caption and collide with everything
+                // either side of it.
+                const labelW = Math.max(180, Math.min(240, r * 3.2));
+                d._labelW = labelW;
                 el.select(".galaxy-label-fo")
-                    .attr("x", -labelW / 2).attr("y", r + 10)
-                    .attr("width", labelW).attr("height", labelH)
+                    .attr("x", -labelW / 2)
+                    .attr("y", d._labelDy != null ? d._labelDy : r + 10)
+                    .attr("width", labelW).attr("height", 150)
                     .style("overflow", "visible").style("pointer-events", "none");
 
                 // Literature volume always shows - it is what sized the node.
@@ -589,11 +646,14 @@ export const Graph = ({
                     .style("color", "#1e293b").style("line-height", "1.25")
                     .style("word-break", "break-word").style("overflow-wrap", "break-word")
                     .style("padding", "0 6px").style("box-sizing", "border-box")
+                    // Type scales with the hexagon: fourteen topics need a
+                    // smaller R than five did, and fixed 17px names overflowed
+                    // the longer ones ("Movement & Motor Skills").
                     .html(
-                        `<div style="font-size:17px;font-weight:700;">${d.name}</div>` +
-                        `<div style="font-size:12px;font-weight:500;color:#475569;margin-top:4px;">` +
+                        `<div style="font-size:${(hexR * 0.098).toFixed(1)}px;font-weight:700;">${d.name}</div>` +
+                        `<div style="font-size:${(hexR * 0.072).toFixed(1)}px;font-weight:500;color:#475569;margin-top:3px;">` +
                         `${d.claimCount} claims · ${d.researchedClaimCount} researched</div>` +
-                        `<div style="font-size:11px;color:#64748b;margin-top:2px;">` +
+                        `<div style="font-size:${(hexR * 0.066).toFixed(1)}px;color:#64748b;margin-top:2px;">` +
                         `~${(d.openAlexCount || 0).toLocaleString()} papers published</div>`
                     );
                 el.select(".label-main").text("");
