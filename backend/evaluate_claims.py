@@ -184,6 +184,9 @@ PENDING_SQL = """
     FROM claim_papers cp
     JOIN papers p USING(paperId)
     WHERE cp.claim_key IN ({placeholders})
+      -- A retracted paper is not evidence, whatever it concluded. Skipping it
+      -- here also saves the five seconds of inference it would have cost.
+      AND COALESCE(p.is_retracted, 0) = 0
       {stance_filter}
     ORDER BY cp.keyword_score DESC, p.cited_by_count DESC
     {limit_clause}

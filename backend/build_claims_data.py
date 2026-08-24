@@ -76,6 +76,10 @@ def claim_rows(conn, claim_key):
         FROM claim_papers cp
         JOIN papers p USING(paperId)
         WHERE cp.claim_key = ?
+          -- Retracted work is excluded outright rather than down-weighted. The
+          -- one found so far is a Cochrane review cited 1,528 times, which the
+          -- design ladder would otherwise have ranked top of its claim.
+          AND COALESCE(p.is_retracted, 0) = 0
         ORDER BY p.cited_by_count DESC
     """, (claim_key,)).fetchall()
 

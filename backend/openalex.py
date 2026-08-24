@@ -25,9 +25,13 @@ EMAIL = os.environ.get("OPENALEX_EMAIL", "tom.hirsch3000@gmail.com")
 # Filters applied to every works query — we only ever want real articles we can read.
 BASE_FILTERS = ["type:article", "has_abstract:true"]
 
+# Requests are billed at a flat rate whatever they return, so adding fields to
+# the select is free. is_retracted is here because a retracted paper silently
+# counting as evidence is the worst failure this pipeline can have.
 DEFAULT_SELECT = (
     "id,title,abstract_inverted_index,publication_year,publication_date,"
-    "cited_by_count,authorships,primary_location,referenced_works,topics,type"
+    "cited_by_count,authorships,primary_location,referenced_works,topics,type,"
+    "is_retracted"
 )
 
 HARD_PAUSE_AFTER = 4    # after this many fast retries, switch to a long pause

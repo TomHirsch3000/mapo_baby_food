@@ -40,7 +40,9 @@ DB_PATH = os.path.join(DATA_DIR, "claims.db")
 
 def create_db(db_path=DB_PATH):
     os.makedirs(os.path.dirname(db_path), exist_ok=True)
-    conn = sqlite3.connect(db_path)
+    conn = sqlite3.connect(db_path, timeout=60)
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA busy_timeout=60000")
     conn.executescript("""
         CREATE TABLE IF NOT EXISTS papers (
             paperId              TEXT PRIMARY KEY,
@@ -54,7 +56,8 @@ def create_db(db_path=DB_PATH):
             all_institution_names TEXT,
             venue                TEXT,
             doi                  TEXT,
-            url                  TEXT
+            url                  TEXT,
+            is_retracted         INTEGER DEFAULT 0
         );
 
         CREATE TABLE IF NOT EXISTS claim_papers (
@@ -116,6 +119,7 @@ def parse_paper(work):
         "venue": source.get("display_name") or "",
         "doi": doi,
         "url": location.get("landing_page_url") or doi or "",
+        "is_retracted": 1 if work.get("is_retracted") else 0,
     }
     refs = [r.replace("https://openalex.org/", "") for r in work.get("referenced_works", [])]
     return paper, refs
@@ -132,12 +136,13 @@ def keyword_score(claim_cfg, title, abstract):
 UPSERT_PAPER = """
     INSERT INTO papers (paperId, title, abstract, year, publicationDate,
                         cited_by_count, all_author_names, first_author_name,
-                        all_institution_names, venue, doi, url)
+                        all_institution_names, venue, doi, url, is_retracted)
     VALUES (:paperId, :title, :abstract, :year, :publicationDate,
             :cited_by_count, :all_author_names, :first_author_name,
-            :all_institution_names, :venue, :doi, :url)
+            :all_institution_names, :venue, :doi, :url, :is_retracted)
     ON CONFLICT(paperId) DO UPDATE SET
         cited_by_count = excluded.cited_by_count,
+        is_retracted = excluded.is_retracted,
         abstract = CASE WHEN length(excluded.abstract) > length(papers.abstract)
                         THEN excluded.abstract ELSE papers.abstract END
 """
