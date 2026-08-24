@@ -74,4 +74,22 @@ def parse_json_response(text):
                 return json.loads(match.group())
             except json.JSONDecodeError:
                 pass
+
+    # A response that stops one character short - every field present and
+    # correct, no closing brace - was being thrown away by the search above,
+    # because that pattern needs a "}" to match at all. The model does this
+    # reproducibly on certain papers, so retrying the pair does not help: the
+    # same abstract fails the same way every run. Close the object ourselves
+    # and re-parse. Nothing is invented; a trailing partial field is dropped.
+    start = text.find("{")
+    if start != -1:
+        body = text[start:].rstrip().rstrip(",")
+        for _ in range(3):          # unwind at most one partial field
+            try:
+                return json.loads(body + "}" * (body.count("{") - body.count("}")))
+            except json.JSONDecodeError:
+                cut = body.rfind(",")
+                if cut == -1:
+                    break
+                body = body[:cut]
     return None
