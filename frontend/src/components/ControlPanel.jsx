@@ -28,7 +28,7 @@ export const ControlPanel = ({
     };
 
     return (
-        <div className="galaxy-header">
+        <div className={`galaxy-header galaxy-header--${viewMode.toLowerCase()}`}>
             <div className="controls-row controls-left">
                 {viewMode === 'CLAIMS' && (
                     <button className="back-to-galaxy" onClick={onBackToTopics}>

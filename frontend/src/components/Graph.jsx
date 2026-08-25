@@ -1292,35 +1292,13 @@ export const Graph = ({
                 const cx = (xExtent[0] + xExtent[1]) / 2;
                 const cy = (yExtent[0] + yExtent[1]) / 2;
 
-                // Claims on a phone fit to WIDTH, not to the whole column, and
-                // anchor to the top so you scroll down through them.
-                //
-                // Fitting the bounding box is right on a desktop and wrong here:
-                // seven stacked cards are ~1,160px tall, so squeezing them into
-                // 694px of usable height renders the claim at eight pixels. A
-                // column you scroll is the normal way to read a list on a phone,
-                // and it keeps the type at its designed size.
-                //
-                // Evidence still fits the box - it is an overview of a hundred
-                // papers, and tapping one now opens it at a fixed screen size
-                // whatever the zoom, so a zoomed-out map stays usable.
-                if (width < 768 && isClaims) {
-                    const scale = Math.min(width / (gw + 40), 1.15);
-                    const topOfContent = yExtent[0] - halfH;
-                    svg.transition().duration(1000).call(zoom.transform,
-                        d3.zoomIdentity
-                            .translate(width / 2, topInset + 24)
-                            .scale(scale)
-                            .translate(-cx, -topOfContent));
-                } else {
-                    const scale = Math.min(
-                        width / (gw + padding * 2), usableH / (gh + padding * 2), 2);
-                    svg.transition().duration(1000).call(zoom.transform,
-                        d3.zoomIdentity
-                            .translate(width / 2, topInset + usableH / 2)
-                            .scale(scale)
-                            .translate(-cx, -cy));
-                }
+                const scale = Math.min(
+                    width / (gw + padding * 2), usableH / (gh + padding * 2), 2);
+                svg.transition().duration(1000).call(zoom.transform,
+                    d3.zoomIdentity
+                        .translate(width / 2, topInset + usableH / 2)
+                        .scale(scale)
+                        .translate(-cx, -cy));
             }
 
             allNodes.transition("flyin").duration(800).ease(d3.easeBackOut.overshoot(0.8))

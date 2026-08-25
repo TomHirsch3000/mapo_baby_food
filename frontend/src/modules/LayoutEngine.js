@@ -246,11 +246,6 @@ export class LayoutEngine {
     // footer. Position still means exactly what the axes say.
     static CLAIM_NODE_STYLE = "card";
 
-    // Below this the scatter stops being a scatter. A 240px card on a 390px
-    // screen leaves room for one and a half of them across, so spreading by
-    // evidence quality just walks cards off both sides of the phone.
-    static NARROW_W = 768;
-    isNarrow() { return this.width > 0 && this.width < LayoutEngine.NARROW_W; }
 
     // 240 x ~25 characters, from a sweep. Widening used to cost positional
     // fidelity, because a wider card needs more room in a row. With the claim
@@ -300,7 +295,7 @@ export class LayoutEngine {
      * card slides sideways when that is the shorter escape - which is what
      * keeps a column of claims at the same support level readable.
      */
-    static separateCards(nodes, padding = 16, narrow = false) {
+    static separateCards(nodes, padding = 16) {
         const overlapOf = (a, b) => {
             const ox = (a._cardW + b._cardW) / 2 + padding - Math.abs(b.x - a.x);
             const oy = (a._cardH + b._cardH) / 2 + padding - Math.abs(b.y - a.y);
@@ -311,11 +306,7 @@ export class LayoutEngine {
         // vertical - and vertical is netSupport, the axis carrying "how true",
         // the one thing a reader takes from this screen. Sliding sideways costs
         // more pixels and spends them on the axis that can afford it.
-        // Wide screens push cards sideways to protect netSupport, the axis that
-        // carries "how true". A phone has no sideways to give, so it inverts:
-        // separate vertically and let the column become an ordering rather than
-        // a position. Both are honest; they answer different questions.
-        const VERTICAL_COST = narrow ? 0.4 : 2;
+        const VERTICAL_COST = 2;
         const push = (a, b, o) => {
             if (o.ox < o.oy * VERTICAL_COST) {
                 const shift = ((b.x - a.x) < 0 ? -1 : 1) * o.ox * 0.5;
@@ -387,15 +378,14 @@ export class LayoutEngine {
         // evenly - netSupport bunches most claims into the supported band - so
         // a plot sized for circles forces the solver to shove cards a long way
         // from the position the axes gave them.
+        // Deliberately not responsive. The plot is the map: turning it into a
+        // column on a phone changed what the screen was, and a claim's position
+        // stopped meaning the same thing at different widths. The layout is
+        // fixed and the zoom fits it to whatever screen is looking.
         const isCard = LayoutEngine.CLAIM_NODE_STYLE === "card";
-        const narrow = this.isNarrow();
-        // On a phone the plot becomes a tall narrow strip, so the cards stack
-        // into a column instead of fanning out past both edges. Reading down a
-        // column ordered by how-true is a fair use of a phone; a two-axis
-        // scatter squeezed into 390px is not.
-        const plotW = narrow ? Math.min(this.width * 0.92, 420)
-            : (isCard ? Math.min(this.width * 0.84, 1560) : Math.min(this.width * 0.66, 1250));
-        const plotH = narrow ? 1180 : (isCard ? 660 : 560);
+        const plotW = isCard ? Math.min(Math.max(this.width, 1200) * 0.84, 1560)
+                             : Math.min(Math.max(this.width, 1000) * 0.66, 1250);
+        const plotH = isCard ? 660 : 560;
         const xScale = d3.scaleLinear().domain([0, 1]).range([-plotW / 2, plotW / 2]);
         const yScale = d3.scaleLinear().domain([-1, 1]).range([plotH / 2, -plotH / 2]);
 
@@ -448,7 +438,7 @@ export class LayoutEngine {
                 n._cardH = h;
                 n._cardHeaderH = headerH;
             });
-            LayoutEngine.separateCards(nodes, 16, narrow);
+            LayoutEngine.separateCards(nodes, 16);
             // Solved, not simulated - so every force is off, exactly as on the
             // topics screen. A live force here would only undo the solution.
             sim.force("center", null).force("link", null).force("charge", null)
