@@ -191,6 +191,26 @@ try {
     if (!container.querySelector('[role="dialog"]')) throw new Error('about panel did not open');
     console.log('ABOUT    panel opens');
 
+    // Narrow viewport. The mobile path is not a stylesheet tweak: the claims
+    // layout switches to a vertical column, the separation bias inverts, and
+    // the zoom fit measures the header out of the DOM. None of that runs at
+    // 1440px, so none of it is covered by anything above.
+    step = 'narrow viewport';
+    for (const [prop, value] of [['clientWidth', 390], ['clientHeight', 844],
+                                 ['offsetWidth', 390], ['offsetHeight', 844]]) {
+        Object.defineProperty(dom.window.HTMLElement.prototype, prop,
+            { configurable: true, get() { return value; } });
+    }
+    await act(async () => {
+        dom.window.dispatchEvent(new dom.window.Event('resize'));
+        await new Promise(r => setTimeout(r, 400));
+    });
+    const narrowNodes = container.querySelectorAll('.d3-node').length;
+    const topbar = container.querySelector('.galaxy-topbar');
+    console.log(`MOBILE   390x844 -> ${narrowNodes} nodes, topbar ${topbar ? 'present' : 'MISSING'}`);
+    if (!narrowNodes) throw new Error('view went blank at 390px');
+    if (!topbar) throw new Error('.galaxy-topbar missing - the mobile header has nothing to lay out');
+
     console.log('\nall views mounted without error');
 } catch (e) {
     console.log(`\nFAILED at step: ${step}`);

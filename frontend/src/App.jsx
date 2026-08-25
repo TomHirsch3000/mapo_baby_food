@@ -137,21 +137,6 @@ export default function App() {
 
   return (
     <div className="App galaxy-theme" ref={wrapRef}>
-      <ControlPanel
-        viewMode={viewMode}
-        topicName={topicName}
-        claimText={claimText}
-        claimIndex={claimIndex}
-        onClaimSelect={handleClaimSelect}
-        evidenceXAxis={evidenceXAxis}
-        onEvidenceXAxisChange={setEvidenceXAxis}
-        reading={reading}
-        onReadingChange={setReading}
-        onOpenAbout={() => setAboutOpen(true)}
-        onBackToTopics={handleBackToTopics}
-        onBackToClaims={handleBackToClaims}
-      />
-
       <Graph
         nodes={nodes}
         edges={edges}
@@ -171,8 +156,24 @@ export default function App() {
         isLoadingDetail={isLoading}
       />
 
+      <div className="galaxy-topbar">
+      <ControlPanel
+        viewMode={viewMode}
+        topicName={topicName}
+        claimText={claimText}
+        claimIndex={claimIndex}
+        onClaimSelect={handleClaimSelect}
+        evidenceXAxis={evidenceXAxis}
+        onEvidenceXAxisChange={setEvidenceXAxis}
+        reading={reading}
+        onReadingChange={setReading}
+        onOpenAbout={() => setAboutOpen(true)}
+        onBackToTopics={handleBackToTopics}
+        onBackToClaims={handleBackToClaims}
+      />
+
       {viewMode === 'TOPICS' && stats && (
-        <div style={bannerStyle}>
+        <div className="galaxy-banner" style={bannerStyle}>
           <span style={{ fontWeight: 700, color: '#334155' }}>{stats.claims}</span> claims
           <span style={dotStyle}>·</span>
           <span style={{ color: '#64748b' }}>{stats.papers} papers, {stats.evaluated} assessed</span>
@@ -180,7 +181,7 @@ export default function App() {
       )}
 
       {viewMode === 'CLAIMS' && topicClaims && (
-        <div style={bannerStyle}>
+        <div className="galaxy-banner" style={bannerStyle}>
           <span style={{ color: '#64748b' }}>
             Up→down: <strong style={{ color: '#334155' }}>how true</strong> ·
             Left→right: <strong style={{ color: '#334155' }}>how strong the studies are</strong> ·
@@ -190,7 +191,7 @@ export default function App() {
       )}
 
       {viewMode === 'EVIDENCE' && evidenceStats && (
-        <div style={bannerStyle}>
+        <div className="galaxy-banner" style={bannerStyle}>
           <span style={{ color: STANCE_COLORS.supports, fontWeight: 700 }}>{evidenceStats.supports}</span> support
           <span style={dotStyle}>·</span>
           <span style={{ color: STANCE_COLORS.refutes, fontWeight: 700 }}>{evidenceStats.refutes}</span> refute
@@ -238,8 +239,9 @@ export default function App() {
       )}
 
       {error && (
-        <div style={{ ...bannerStyle, color: '#ef4444' }}>⚠ {error}</div>
+        <div className="galaxy-banner" style={{ ...bannerStyle, color: '#ef4444' }}>⚠ {error}</div>
       )}
+      </div>
 
       <AboutPanel open={aboutOpen} onClose={() => setAboutOpen(false)} />
 

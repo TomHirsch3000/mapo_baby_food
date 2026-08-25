@@ -1272,12 +1272,55 @@ export const Graph = ({
             const yExtent = d3.extent(currentNodes, d => d.y);
             const padding = 100;
             if (xExtent[0] !== undefined && yExtent[0] !== undefined) {
-                const gw = xExtent[1] - xExtent[0];
-                const gh = yExtent[1] - yExtent[0];
-                const scale = Math.min(width / (gw + padding * 2), height / (gh + padding * 2), 2);
+                // d.x/d.y are centres, so half of every edge card hangs past
+                // the extent. With circles that was a few pixels; a 240x150
+                // card loses 120 of them off each side and 75 off the top.
+                const halfW = d3.max(currentNodes, n => (n._cardW || n._w || n.val * 2 || 0) / 2) || 0;
+                const halfH = d3.max(currentNodes, n => (n._cardH || n._h || n.val * 2 || 0) / 2) || 0;
+
+                // On mobile the header is a fixed bar over the map rather than
+                // controls tucked into the corners, so the usable canvas starts
+                // below it. Measured, not guessed - its height depends on how
+                // many rows of controls this view has.
+                const topInset = width < 768
+                    ? (document.querySelector('.galaxy-topbar')?.getBoundingClientRect().height || 140)
+                    : 0;
+                const usableH = Math.max(120, height - topInset);
+
+                const gw = (xExtent[1] - xExtent[0]) + halfW * 2;
+                const gh = (yExtent[1] - yExtent[0]) + halfH * 2;
                 const cx = (xExtent[0] + xExtent[1]) / 2;
                 const cy = (yExtent[0] + yExtent[1]) / 2;
-                svg.transition().duration(1000).call(zoom.transform, d3.zoomIdentity.translate(width / 2, height / 2).scale(scale).translate(-cx, -cy));
+
+                // Claims on a phone fit to WIDTH, not to the whole column, and
+                // anchor to the top so you scroll down through them.
+                //
+                // Fitting the bounding box is right on a desktop and wrong here:
+                // seven stacked cards are ~1,160px tall, so squeezing them into
+                // 694px of usable height renders the claim at eight pixels. A
+                // column you scroll is the normal way to read a list on a phone,
+                // and it keeps the type at its designed size.
+                //
+                // Evidence still fits the box - it is an overview of a hundred
+                // papers, and tapping one now opens it at a fixed screen size
+                // whatever the zoom, so a zoomed-out map stays usable.
+                if (width < 768 && isClaims) {
+                    const scale = Math.min(width / (gw + 40), 1.15);
+                    const topOfContent = yExtent[0] - halfH;
+                    svg.transition().duration(1000).call(zoom.transform,
+                        d3.zoomIdentity
+                            .translate(width / 2, topInset + 24)
+                            .scale(scale)
+                            .translate(-cx, -topOfContent));
+                } else {
+                    const scale = Math.min(
+                        width / (gw + padding * 2), usableH / (gh + padding * 2), 2);
+                    svg.transition().duration(1000).call(zoom.transform,
+                        d3.zoomIdentity
+                            .translate(width / 2, topInset + usableH / 2)
+                            .scale(scale)
+                            .translate(-cx, -cy));
+                }
             }
 
             allNodes.transition("flyin").duration(800).ease(d3.easeBackOut.overshoot(0.8))
@@ -1309,12 +1352,16 @@ export const Graph = ({
                 // heading is scrolled off the canvas by its own fit.
                 const gh = (yExtent[1] - yExtent[0]) + hexR * 2
                            + hexR * LayoutEngine.CLUSTER_HEAD;
+                const topInset = width < 768
+                    ? (document.querySelector('.galaxy-topbar')?.getBoundingClientRect().height || 140)
+                    : 0;
+                const usableH = Math.max(120, height - topInset);
                 const scale = Math.min(
-                    width / (gw + padding), height / (gh + padding), 1.4);
+                    width / (gw + padding), usableH / (gh + padding), 1.4);
                 const cx = (xExtent[0] + xExtent[1]) / 2;
                 const cy = (yExtent[0] + yExtent[1]) / 2;
                 const target = d3.zoomIdentity
-                    .translate(width / 2, height / 2).scale(scale).translate(-cx, -cy);
+                    .translate(width / 2, topInset + usableH / 2).scale(scale).translate(-cx, -cy);
                 if (firstDataRenderRef.current) svg.call(zoom.transform, target);
                 else svg.transition().duration(700).call(zoom.transform, target);
             }

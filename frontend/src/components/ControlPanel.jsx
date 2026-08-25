@@ -29,14 +29,7 @@ export const ControlPanel = ({
 
     return (
         <div className="galaxy-header">
-            <div
-                className="controls-row"
-                style={{
-                    display: 'flex', flexDirection: 'column', gap: '12px',
-                    alignItems: 'flex-start', position: 'absolute',
-                    top: 20, left: 20, pointerEvents: 'auto',
-                }}
-            >
+            <div className="controls-row controls-left">
                 {viewMode === 'CLAIMS' && (
                     <button className="back-to-galaxy" onClick={onBackToTopics}>
                         ← All topics
@@ -94,10 +87,7 @@ export const ControlPanel = ({
                 )}
             </div>
 
-            <div style={{
-                position: 'absolute', top: 20, right: 20, pointerEvents: 'auto',
-                display: 'flex', alignItems: 'center', gap: 10,
-            }}>
+            <div className="controls-right">
                 <SearchBar claimIndex={claimIndex} onClaimSelect={onClaimSelect} />
                 {/* Nothing on this map is guessable without it - the axes, the
                     sizes and the limits all need stating somewhere reachable. */}
