@@ -89,6 +89,10 @@ const clickFirstNode = async (label) => {
     // Pick the node with the most children — a real topic/claim, not a stray.
     const target = nodes[0];
     await act(async () => {
+        // mouseover first, and never a mouseout: that is what a real click is,
+        // and it is what left a stale `hovered` pointing at a node the next
+        // screen has never heard of.
+        target.dispatchEvent(new dom.window.MouseEvent('mouseover', { bubbles: true }));
         target.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true, cancelable: true }));
         await new Promise(r => setTimeout(r, 200));
     });
@@ -141,6 +145,37 @@ try {
     console.log(`         ${spokes} spokes · ${anchorCard} claim card(s) · ${container.querySelectorAll('.d3-link').length} citation ribbons`);
     if (!compact.length) throw new Error('paper cards show no summary text');
     if (!anchorCard) throw new Error('the claim anchor did not render as a card');
+    // The reading and axis toggles live behind the tune button now, so they
+    // are only in the DOM once it is open. Opening it is part of the test:
+    // a popover that fails to open takes both controls with it, silently.
+    // Arriving greyed out. Every paper dimmed to 0.15 because the claim still
+    // under the cursor was treated as the focus node, and nothing on this
+    // screen shares its id - so nothing counted as connected to it. It cleared
+    // as soon as the pointer moved, which is what made it look intermittent.
+    step = 'evidence arrives at full opacity';
+    const dimmed = [...container.querySelectorAll('.d3-node')]
+        .filter(n => {
+            const o = parseFloat(n.style.opacity);
+            return Number.isFinite(o) && o < 0.9;
+        });
+    console.log(`         ${dimmed.length} of ${container.querySelectorAll('.d3-node').length} nodes dimmed on arrival`);
+    if (dimmed.length) {
+        throw new Error(`${dimmed.length} nodes arrived dimmed - stale focus from the previous view`);
+    }
+
+    step = 'display-options popover';
+    if (container.querySelector('.axis-toggle-btn')) {
+        throw new Error('toggles are in the DOM before the popover was opened');
+    }
+    await act(async () => {
+        container.querySelector('.icon-button[aria-label="Display options"]')
+            ?.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+        await new Promise(r => setTimeout(r, 120));
+    });
+    const popover = container.querySelector('.settings-popover');
+    if (!popover) throw new Error('display-options popover did not open');
+    console.log(`         popover opens with ${popover.querySelectorAll('.axis-toggle-btn').length} controls`);
+
     step = 'toggles on the evidence view';
     for (const label of ['Publication year', 'Study strength', 'Conservative', 'Liberal', 'Balanced']) {
         const btn = [...container.querySelectorAll('.axis-toggle-btn')]

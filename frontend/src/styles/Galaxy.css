@@ -52,9 +52,12 @@
     backdrop-filter: blur(8px);
     border: 1px solid rgba(0, 0, 0, 0.05);
     box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
-    /* Keep clear of the controls pinned at either edge: the widest left stack
-       (the mixed-evidence toggle) is ~410px and the search plus ? is ~330px. */
-    max-width: clamp(300px, calc(100vw - 840px), 720px);
+    /* Keep clear of the controls pinned at either edge. The title is CENTRED,
+       so it must clear twice the WIDER corner, not the sum of both. That corner
+       is now the right one - search, tune and ? at ~354px plus its margin -
+       because the toggles that used to make the left stack ~410px moved into
+       the tune button. Reserve dropped from 840px to 780px accordingly. */
+    max-width: clamp(300px, calc(100vw - 780px), 760px);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -332,63 +335,127 @@
 /* Vanishes from layout on desktop, so wrapping the header changed nothing. */
 .galaxy-topbar { display: contents; }
 
+/* Icon buttons and the display-options popover.
+   The reading and axis toggles used to live in a column under the back button.
+   They are the least-used controls on the screen and were the widest thing in
+   the header, so they set how much room the title could have. Behind a button
+   they cost one tap and give it back. */
+.settings-wrap { position: relative; display: flex; }
+
+.icon-button {
+    width: 38px;
+    height: 38px;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    border: 1px solid rgba(0, 0, 0, 0.08);
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.92);
+    backdrop-filter: blur(8px);
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+    color: #6366f1;
+    cursor: pointer;
+    transition: background-color 120ms ease, color 120ms ease, transform 120ms ease;
+}
+.icon-button svg { width: 19px; height: 19px; }
+.icon-button:hover { background: #6366f1; color: #ffffff; transform: scale(1.06); }
+.icon-button:active { transform: scale(0.97); }
+.icon-button.is-open { background: #6366f1; color: #ffffff; }
+
+.settings-popover {
+    position: absolute;
+    top: 46px;
+    right: 0;
+    z-index: 200;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    padding: 14px;
+    background: rgba(255, 255, 255, 0.98);
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(0, 0, 0, 0.08);
+    border-radius: 14px;
+    box-shadow: 0 10px 34px rgba(0, 0, 0, 0.14);
+    pointer-events: auto;
+}
+.settings-group { display: flex; flex-direction: column; gap: 7px; }
+.settings-label {
+    font-family: Inter, system-ui, sans-serif;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    color: #94a3b8;
+}
+/* Inside the popover the control is the whole row, so it drops the floating
+   pill treatment it needed when it sat loose over the map. */
+.settings-popover .axis-toggle {
+    background: #f1f5f9;
+    box-shadow: none;
+    border-color: rgba(0, 0, 0, 0.04);
+    border-radius: 10px;
+    padding: 3px;
+}
+.settings-popover .axis-toggle-btn { border-radius: 8px; white-space: nowrap; }
+
 /* ── Mobile ───────────────────────────────────────────────────────────────
-   The map keeps the corners it has on desktop. What changes is how much is
-   pinned into them: the first attempt stacked every control into its own row,
-   which stopped things overlapping by taking the top third of the screen -
-   trading one problem for a worse one. So the chrome is cut instead.
-   Removed on a phone: the legend banner, the mixed-evidence toggle and the
-   x-axis toggle. All three are explanation or power-user controls whose
-   defaults are the ones almost everyone wants, and the About panel still
-   carries what the banner said. What is left is one row: back, title, search,
-   about. */
+   The map keeps the corners it has on desktop. The title gets the full width
+   of a row to itself, below them, because truncating it was the thing that
+   made the header unreadable - a claim cut to twenty characters is not a
+   title. Everything that used to compete with it for that row is now either a
+   button or gone. */
 @media (max-width: 768px) {
     .footer-panels { grid-template-columns: 1fr; }
     .footer-panel.hover-panel { display: none; }
+
+    /* The footer is a hover readout, and there is no hover on a touch screen.
+       On Topics and Claims a tap navigates rather than selects, so it can
+       never fill - it just sits there saying "hover a node" over the map.
+       Evidence keeps it: a tap there does select a paper. */
+    .App[data-view="TOPICS"] .galaxy-footer,
+    .App[data-view="CLAIMS"] .galaxy-footer { display: none; }
 
     .galaxy-topbar { display: contents; }
     .galaxy-header { top: 12px; }
     .controls-left { top: 12px; left: 12px; gap: 8px; }
     .controls-right { top: 12px; right: 12px; gap: 8px; }
 
-    /* Gone, not relocated. */
     .galaxy-banner { display: none !important; }
-    .axis-toggle { display: none; }
 
+    /* Its own row, full width, wrapping. The corners are absolutely
+       positioned, so a top margin is all it takes to clear them. */
     .galaxy-title {
-        font-size: 0.9rem;
-        letter-spacing: 1.5px;
-        padding: 7px 12px;
+        margin-top: 46px;
+        max-width: calc(100vw - 24px);
+        font-size: 0.92rem;
+        letter-spacing: 1.2px;
+        padding: 8px 14px;
+        white-space: normal;
+        text-align: center;
+        overflow: visible;
+        text-overflow: clip;
     }
-    /* Title width is whatever the corners leave, and that differs by screen:
-       Topics has no back button, Claims has a short one.
-       The title is CENTRED, so it has to clear twice the widest corner, not
-       once - reserving the corner width alone put the Topics title 30px into
-       the search button at every phone size. Right corner is 96px (collapsed
-       search, gap, about, margin), the Claims back button 110px. */
-    .galaxy-header--topics .galaxy-title { max-width: calc(100vw - 220px); }
-    .galaxy-header--claims .galaxy-title { max-width: calc(100vw - 248px); }
-
-    /* Evidence drops the title entirely. It is the full claim text, and the
-       claim is already written across the anchor card in the middle of the
-       map - so on a phone it was a second copy of the same sentence competing
-       with the back button for a row that fits neither. */
-    .galaxy-header--evidence .galaxy-title { display: none; }
+    .galaxy-title.is-claim {
+        font-size: 0.88rem;
+        line-height: 1.35;
+        letter-spacing: 0;
+        max-width: calc(100vw - 24px);
+        display: block;
+    }
 
     .back-to-galaxy {
         padding: 8px 12px;
         font-size: 0.78rem;
-        /* "← Screens & Development" cannot have the room it wants. */
-        max-width: 42vw;
+        max-width: 46vw;
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
     }
 
-    /* The search collapses to its own icon and opens on tap. At 260px it was
-       the single widest thing on the screen; at 38px it costs nothing until
-       it is wanted. No JS - the input stays focusable at its collapsed width,
-       so tapping it is what expands it. */
+    /* Search collapses to its own icon and opens on tap. No JS - the input
+       stays focusable at its collapsed width, so tapping it is what opens it. */
     .search-input {
         width: 38px;
         padding: 8px 4px 8px 32px;
@@ -396,20 +463,17 @@
     }
     .search-input::placeholder { opacity: 0; }
     .search-bar-inner:focus-within .search-input {
-        width: min(60vw, 250px);
+        width: min(58vw, 240px);
         padding-right: 30px;
     }
     .search-bar-inner:focus-within .search-input::placeholder { opacity: 1; }
-    /* Anchored to the right edge or the results run off the screen. */
-    .autocomplete-dropdown {
-        left: auto;
-        right: 0;
-        width: min(86vw, 330px);
-    }
+    .autocomplete-dropdown { left: auto; right: 0; width: min(86vw, 330px); }
+
+    .settings-popover { width: min(76vw, 290px); }
 }
 
 @media (max-width: 430px) {
-    .galaxy-title { font-size: 0.82rem; letter-spacing: 0.5px; padding: 6px 10px; }
+    .galaxy-title { font-size: 0.86rem; letter-spacing: 0.5px; }
     .back-to-galaxy { padding: 7px 10px; font-size: 0.74rem; }
 }
 

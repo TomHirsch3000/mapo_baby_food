@@ -1378,7 +1378,19 @@ export const Graph = ({
             });
 
         // On the evidence view a click pins a paper; elsewhere only hover focuses.
-        const focusNode = hovered || (isEvidence && selected && !isReturning ? selected : null);
+        // Focus has to be a node on THIS screen.
+        //
+        // Clicking a claim leaves the cursor on it, so `hovered` still holds
+        // that claim when the evidence view mounts - and no paper carries a
+        // claim's id, so every one of them fell through to "not connected to
+        // the focus" and dimmed to 0.15. The whole screen arrived grey, and
+        // stayed grey until the pointer moved or something was selected, which
+        // cleared the stale value. Same trap on the way back up.
+        const presentIds = new Set();
+        gNodes.selectAll(".d3-node").each(function (d) { presentIds.add(d.id); });
+
+        const candidate = hovered || (isEvidence && selected && !isReturning ? selected : null);
+        const focusNode = candidate && presentIds.has(candidate.id) ? candidate : null;
         const isHovering = !!hovered;
 
         if (focusNode) {
@@ -1445,6 +1457,7 @@ export const Graph = ({
                     const h = open ? Math.max(ch, 30 + lines * 17) : ch;
 
                     if (open) el.raise();
+                    d._paperOpen = open;
 
                     el.transition("paper-open").duration(160)
                         .attr("transform", open
@@ -1505,10 +1518,13 @@ export const Graph = ({
                         return Math.max(1, Math.sqrt(d.weight || 1));
                     });
             }
-            // Papers collapse back to their summary.
+            // Papers collapse back to their summary. Only the ones actually
+            // open: this used to rewrite every node's transform, which on a
+            // fresh view collided with the fly-in animating the same attribute.
             if (isEvidence) {
                 gNodes.selectAll(".d3-node").each(function (d) {
-                    if (d.type === 'claim-anchor') return;
+                    if (d.type === 'claim-anchor' || !d._paperOpen) return;
+                    d._paperOpen = false;
                     const el = d3.select(this);
                     const w = d._compactW || d._w || 96;
                     const h = d._compactH || d._h || 54;

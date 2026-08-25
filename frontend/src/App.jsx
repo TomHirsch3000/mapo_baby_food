@@ -136,7 +136,7 @@ export default function App() {
   const stats = topicsData?.stats;
 
   return (
-    <div className="App galaxy-theme" ref={wrapRef}>
+    <div className="App galaxy-theme" data-view={viewMode} ref={wrapRef}>
       <Graph
         nodes={nodes}
         edges={edges}
