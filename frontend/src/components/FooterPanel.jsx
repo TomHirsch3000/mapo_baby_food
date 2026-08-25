@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useRef } from 'react';
 import { STANCE_COLORS } from './Graph';
 
 /**
@@ -86,9 +86,58 @@ const verdictOf = (net, decided) => {
 export const FooterPanel = ({ selected, hovered }) => {
     const node = hovered || selected;
 
+    // Drag height. Null means "whatever the stylesheet says", which is the
+    // 30-33vh band; once dragged the panel keeps the height it was given.
+    //
+    // A phone has no second screen to put this on and no hover to reveal it,
+    // so it is the only way to read a node in full - and at a third of the
+    // viewport it cuts off long claims. Dragging the grip is cheaper than a
+    // scroll inside a panel that is itself inside a pannable map, where a
+    // vertical swipe is ambiguous.
+    const [height, setHeight] = useState(null);
+    const footerRef = useRef(null);
+
+    const startDrag = (e) => {
+        const startY = e.clientY;
+        const startH = footerRef.current?.getBoundingClientRect().height || 0;
+        const handle = e.currentTarget;
+        handle.setPointerCapture?.(e.pointerId);
+
+        const move = (ev) => {
+            // Up is taller: the panel grows out of the bottom edge.
+            const next = startH + (startY - ev.clientY);
+            const cap = (typeof window !== 'undefined' ? window.innerHeight : 800) * 0.85;
+            setHeight(Math.max(64, Math.min(cap, next)));
+        };
+        const end = (ev) => {
+            handle.releasePointerCapture?.(ev.pointerId);
+            window.removeEventListener('pointermove', move);
+            window.removeEventListener('pointerup', end);
+            window.removeEventListener('pointercancel', end);
+        };
+        window.addEventListener('pointermove', move);
+        window.addEventListener('pointerup', end);
+        window.addEventListener('pointercancel', end);
+    };
+
+    // An explicit height has to beat the stylesheet's min AND max, or the
+    // panel snaps back to the 30-33vh band the moment it leaves it.
+    const sizing = height == null
+        ? undefined
+        : { height: `${height}px`, minHeight: 0, maxHeight: 'none' };
+
+    const grip = (
+        <div className="footer-grip" onPointerDown={startDrag}
+             role="separator" aria-label="Resize panel" aria-orientation="horizontal">
+            <span className="footer-grip-bar" />
+        </div>
+    );
+
     if (!node) {
         return (
-            <div className="galaxy-footer" style={{ opacity: 1, pointerEvents: 'none' }}>
+            <div className="galaxy-footer" ref={footerRef}
+                 style={{ opacity: 1, pointerEvents: 'none', ...sizing }}>
+                {grip}
                 <div style={{ textAlign: 'center', color: '#94a3b8', padding: '10px' }}>
                     Hover a node for details · click to open it
                 </div>
@@ -99,7 +148,8 @@ export const FooterPanel = ({ selected, hovered }) => {
     const formatText = (t) => (t || '').replace(/<(\/?)[a-zA-Z0-9]+:([a-zA-Z0-9-]+)/g, '<$1$2');
 
     return (
-        <div className="galaxy-footer" style={{ opacity: 1 }}>
+        <div className="galaxy-footer" ref={footerRef} style={{ opacity: 1, ...sizing }}>
+            {grip}
             <div className="footer-content" onWheel={e => e.stopPropagation()}>
                 <div className="footer-panel selected-panel" style={{ gridColumn: '1 / -1' }}>
 

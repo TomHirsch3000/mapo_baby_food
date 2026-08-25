@@ -9,6 +9,11 @@ export const SearchBar = ({ claimIndex = [], onClaimSelect }) => {
     const [suggestions, setSuggestions] = useState([]);
     const [highlightIndex, setHighlightIndex] = useState(-1);
     const [showDropdown, setShowDropdown] = useState(false);
+    // Closed, this is one more icon button in the cluster. The input only
+    // exists once it is asked for, so the header carries three equal buttons
+    // instead of two buttons and a 260px field that was the widest thing on
+    // the screen and set how much room the title could have.
+    const [open, setOpen] = useState(false);
     const inputRef = useRef(null);
     const wrapperRef = useRef(null);
     const debounceRef = useRef(null);
@@ -43,17 +48,24 @@ export const SearchBar = ({ claimIndex = [], onClaimSelect }) => {
         const handleMouseDown = (e) => {
             if (wrapperRef.current && !wrapperRef.current.contains(e.target)) {
                 setShowDropdown(false);
+                // Only fold away again if nothing has been typed - closing a
+                // field mid-query would throw the query away.
+                setOpen(o => (inputRef.current?.value ? o : false));
             }
         };
         document.addEventListener('mousedown', handleMouseDown);
         return () => document.removeEventListener('mousedown', handleMouseDown);
     }, []);
 
+    // Focus follows opening, or the button would need a second tap to type.
+    useEffect(() => { if (open) inputRef.current?.focus(); }, [open]);
+
     const handleSelect = (claim) => {
         setValue('');
         setSuggestions([]);
         setShowDropdown(false);
         setHighlightIndex(-1);
+        setOpen(false);
         if (onClaimSelect) onClaimSelect(claim);
     };
 
@@ -68,6 +80,7 @@ export const SearchBar = ({ claimIndex = [], onClaimSelect }) => {
             setValue('');
             setSuggestions([]);
             setShowDropdown(false);
+            setOpen(false);
             inputRef.current?.blur();
         } else if (e.key === 'ArrowDown') {
             e.preventDefault();
@@ -80,8 +93,31 @@ export const SearchBar = ({ claimIndex = [], onClaimSelect }) => {
 
     const truncate = (str, len) => (str && str.length > len ? `${str.slice(0, len)}…` : str);
 
+    const magnifier = (
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+            <circle cx="11" cy="11" r="8" />
+            <line x1="21" y1="21" x2="16.65" y2="16.65" />
+        </svg>
+    );
+
+    if (!open) {
+        return (
+            <button
+                type="button"
+                className="icon-button search-open-btn"
+                onClick={() => setOpen(true)}
+                aria-label="Find a claim"
+                aria-expanded={false}
+                title="Find a claim"
+            >
+                {magnifier}
+            </button>
+        );
+    }
+
     return (
-        <form className="search-bar" onSubmit={handleSubmit} role="search">
+        <form className="search-bar is-open" onSubmit={handleSubmit} role="search">
             <div className="search-bar-inner" ref={wrapperRef}>
                 <svg className="search-icon" viewBox="0 0 24 24" fill="none"
                      stroke="currentColor" strokeWidth="2">
@@ -106,6 +142,16 @@ export const SearchBar = ({ claimIndex = [], onClaimSelect }) => {
                         className="search-clear-btn"
                         onClick={() => { setValue(''); setSuggestions([]); setShowDropdown(false); }}
                         aria-label="Clear search"
+                    >
+                        ✕
+                    </button>
+                )}
+                {!value && (
+                    <button
+                        type="button"
+                        className="search-clear-btn"
+                        onClick={() => setOpen(false)}
+                        aria-label="Close search"
                     >
                         ✕
                     </button>

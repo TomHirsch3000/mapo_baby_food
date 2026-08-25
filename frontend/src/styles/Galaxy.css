@@ -53,11 +53,13 @@
     border: 1px solid rgba(0, 0, 0, 0.05);
     box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
     /* Keep clear of the controls pinned at either edge. The title is CENTRED,
-       so it must clear twice the WIDER corner, not the sum of both. That corner
-       is now the right one - search, tune and ? at ~354px plus its margin -
-       because the toggles that used to make the left stack ~410px moved into
-       the tune button. Reserve dropped from 840px to 780px accordingly. */
-    max-width: clamp(300px, calc(100vw - 780px), 760px);
+       so it must clear twice the WIDER corner, not the sum of both.
+       With search collapsed to a button the right cluster is three 38px
+       circles (~154px including its margin) and the wider corner is now the
+       LEFT one: "← Movement & Motor Skills" runs to about 235px. Twice that is
+       470px, so 560px leaves a comfortable margin - down from 840px when a
+       260px search field and a stack of toggles were setting the budget. */
+    max-width: clamp(300px, calc(100vw - 560px), 860px);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -342,6 +344,35 @@
    they cost one tap and give it back. */
 .settings-wrap { position: relative; display: flex; }
 
+/* Grab bar along the top edge of the footer. touch-action: none is what makes
+   the drag work at all on a phone - without it the browser claims the vertical
+   swipe for scrolling before the pointer events arrive. */
+.footer-grip {
+    position: sticky;
+    top: -16px;
+    margin: -16px -16px 6px;
+    padding: 8px 0 6px;
+    display: flex;
+    justify-content: center;
+    cursor: ns-resize;
+    touch-action: none;
+    pointer-events: auto;
+    background: linear-gradient(to bottom,
+        rgba(255, 255, 255, 0.92), rgba(255, 255, 255, 0));
+    z-index: 2;
+}
+.footer-grip-bar {
+    width: 44px;
+    height: 4px;
+    border-radius: 999px;
+    background: #cbd5e1;
+    transition: background-color 120ms ease;
+}
+.footer-grip:hover .footer-grip-bar { background: #94a3b8; }
+
+/* The closed search is just another button in the cluster. */
+.search-open-btn { color: #6366f1; }
+
 .icon-button {
     width: 38px;
     height: 38px;
@@ -410,12 +441,12 @@
     .footer-panels { grid-template-columns: 1fr; }
     .footer-panel.hover-panel { display: none; }
 
-    /* The footer is a hover readout, and there is no hover on a touch screen.
-       On Topics and Claims a tap navigates rather than selects, so it can
-       never fill - it just sits there saying "hover a node" over the map.
-       Evidence keeps it: a tap there does select a paper. */
-    .App[data-view="TOPICS"] .galaxy-footer,
-    .App[data-view="CLAIMS"] .galaxy-footer { display: none; }
+    /* The footer is a readout of whatever is focused. It used to be hidden
+       outright on Topics and Claims, because a tap there navigated and nothing
+       could ever fill it. Now the first tap selects, so it fills - it just
+       has nothing to say until then, and an empty panel telling a phone to
+       "hover a node" is worse than no panel. */
+    .App[data-has-focus="0"] .galaxy-footer { display: none; }
 
     .galaxy-topbar { display: contents; }
     .galaxy-header { top: 12px; }
@@ -454,20 +485,13 @@
         white-space: nowrap;
     }
 
-    /* Search collapses to its own icon and opens on tap. No JS - the input
-       stays focusable at its collapsed width, so tapping it is what opens it. */
-    .search-input {
-        width: 38px;
-        padding: 8px 4px 8px 32px;
-        transition: width 180ms ease, padding 180ms ease;
-    }
-    .search-input::placeholder { opacity: 0; }
-    .search-bar-inner:focus-within .search-input {
-        width: min(58vw, 240px);
-        padding-right: 30px;
-    }
-    .search-bar-inner:focus-within .search-input::placeholder { opacity: 1; }
+    /* Search is a button until it is opened, at every width now, so the CSS
+       collapse this used to do has moved into the component. Open, it takes
+       the room it needs. */
+    .search-input { width: min(56vw, 230px); }
     .autocomplete-dropdown { left: auto; right: 0; width: min(86vw, 330px); }
+
+
 
     .settings-popover { width: min(76vw, 290px); }
 }

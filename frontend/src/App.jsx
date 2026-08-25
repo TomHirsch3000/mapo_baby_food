@@ -57,12 +57,43 @@ export default function App() {
 
   // ── Navigation ────────────────────────────────────────────────────────────
 
+  // ── History ───────────────────────────────────────────────────────────────
+  //
+  // Each level of the map is a history entry, so the phone's own back gesture
+  // walks back up it instead of leaving the site - which is what it did when
+  // the whole app lived at one URL. The in-app back button goes through the
+  // same door (history.back()), so the two can never disagree about where
+  // "up" is.
+
+  const applyState = (st) => {
+    const view = st?.view || 'TOPICS';
+    setViewMode(view);
+    setActiveTopic(view === 'TOPICS' ? null : (st?.topic ?? null));
+    setActiveClaim(view === 'EVIDENCE' ? (st?.claim ?? null) : null);
+    setSelected(null);
+  };
+
+  useEffect(() => {
+    window.history.replaceState({ view: 'TOPICS' }, '');
+    const onPop = (e) => {
+      // Anything reached by popstate is a return, forward or back: the Graph
+      // must not re-focus a selection belonging to the view being left.
+      isReturningRef.current = true;
+      applyState(e.state);
+    };
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+  }, []);
+
+  // ── Navigation ────────────────────────────────────────────────────────────
+
   const openTopic = (topicId) => {
     isReturningRef.current = false;
     setActiveTopic(topicId);
     setActiveClaim(null);
     setViewMode('CLAIMS');
     setSelected(null);
+    window.history.pushState({ view: 'CLAIMS', topic: topicId }, '');
   };
 
   const openClaim = (topicId, claimId) => {
@@ -71,30 +102,37 @@ export default function App() {
     setActiveClaim(claimId);
     setViewMode('EVIDENCE');
     setSelected(null);
+    window.history.pushState({ view: 'EVIDENCE', topic: topicId, claim: claimId }, '');
   };
+
+  // No hover on a touch screen, so a tap has to do both jobs: the first one
+  // selects, which is what hovering does on a laptop and what fills the panel
+  // at the bottom, and a second tap on the same node opens it. Without this a
+  // phone could never see a node's details at all - the tap that would have
+  // shown them navigated away instead.
+  const isTouch = () =>
+    typeof window !== 'undefined' &&
+    typeof window.matchMedia === 'function' &&
+    window.matchMedia('(hover: none)').matches;
 
   const handleNodeClick = (d) => {
+    if (viewMode === 'EVIDENCE') {
+      if (d.type === 'claim-anchor') return;   // a reference mark, not a paper
+      isReturningRef.current = false;
+      return setSelected(d);                   // EVIDENCE: select the paper
+    }
+    if (isTouch() && selected?.id !== d.id) {
+      isReturningRef.current = false;
+      return setSelected(d);                   // first tap: preview it
+    }
     if (viewMode === 'TOPICS') return openTopic(d.id);
     if (viewMode === 'CLAIMS') return openClaim(activeTopic, d.id);
-    if (d.type === 'claim-anchor') return;   // a reference mark, not a paper
-    isReturningRef.current = false;
-    setSelected(d);   // EVIDENCE: select the paper
   };
 
-  const handleBackToTopics = () => {
-    isReturningRef.current = true;
-    setViewMode('TOPICS');
-    setActiveTopic(null);
-    setActiveClaim(null);
-    setSelected(null);
-  };
-
-  const handleBackToClaims = () => {
-    isReturningRef.current = true;
-    setViewMode('CLAIMS');
-    setActiveClaim(null);
-    setSelected(null);
-  };
+  // Both breadcrumbs defer to history, so the button and the device gesture
+  // are the same action.
+  const handleBackToTopics = () => window.history.back();
+  const handleBackToClaims = () => window.history.back();
 
   const handleBackgroundClick = () => {
     if (selected) setSelected(null);
@@ -136,7 +174,8 @@ export default function App() {
   const stats = topicsData?.stats;
 
   return (
-    <div className="App galaxy-theme" data-view={viewMode} ref={wrapRef}>
+    <div className="App galaxy-theme" data-view={viewMode}
+         data-has-focus={(hovered || selected) ? '1' : '0'} ref={wrapRef}>
       <Graph
         nodes={nodes}
         edges={edges}

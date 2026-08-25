@@ -684,6 +684,21 @@ export const Graph = ({
         });
 
         const allNodes = nodeEnter.merge(nodeJoin);
+
+        // Rebind every render, not just on enter.
+        //
+        // Bound on enter alone, a handler keeps the closure it was created with
+        // for as long as the node lives - so onNodeClick was permanently the
+        // very first one, reading a `selected` that was null when the map was
+        // built and null forever after. Nothing depending on current props
+        // could work: tap-to-select saw no previous selection, so a second tap
+        // on the same node selected it again instead of opening it.
+        allNodes
+            .on("click", (e, d) => { e.stopPropagation(); onNodeClick(d); })
+            .on("dblclick", (e, d) => { e.stopPropagation(); if (onNodeDoubleClick) onNodeDoubleClick(d); })
+            .on("mouseover", (e, d) => onNodeHover(d))
+            .on("mouseout", () => onNodeHover(null));
+
         allNodes.attr("transform", d => `translate(${d.x}, ${d.y})`);
 
         const cScale = scales.colorScale || d3.scaleOrdinal(d3.schemeTableau10);
@@ -1389,7 +1404,11 @@ export const Graph = ({
         const presentIds = new Set();
         gNodes.selectAll(".d3-node").each(function (d) { presentIds.add(d.id); });
 
-        const candidate = hovered || (isEvidence && selected && !isReturning ? selected : null);
+        // `selected` now focuses on every screen, not only Evidence: on a touch
+        // device the first tap selects, and that has to light the node up the
+        // way hovering does on a laptop. On a laptop `selected` stays null on
+        // Topics and Claims - a click there navigates - so nothing changes.
+        const candidate = hovered || (selected && !isReturning ? selected : null);
         const focusNode = candidate && presentIds.has(candidate.id) ? candidate : null;
         const isHovering = !!hovered;
 

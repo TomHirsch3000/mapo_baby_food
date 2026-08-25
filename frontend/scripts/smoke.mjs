@@ -203,6 +203,15 @@ try {
     });
     await settle(300);
     if (!container.querySelectorAll('.d3-node').length) throw new Error('TOPICS blank after backing out');
+    // "has nodes" was too weak to notice a back button that never fired: the
+    // evidence view has 117 of them. The breadcrumbs go through history.back()
+    // now, so this is really asking whether popstate came through.
+    const backHexes = container.querySelectorAll('.d3-node').length;
+    const backTitle = container.querySelector('.galaxy-title')?.textContent?.trim();
+    console.log(`BACK     two backs -> ${backHexes} nodes, title "${backTitle}"`);
+    if (backHexes !== 14) {
+        throw new Error(`expected 14 topic hexagons after backing out, got ${backHexes} - history.back() did not land on TOPICS`);
+    }
 
     // "motor" has claims but no gathered evidence - the shelf/empty-state path.
     const hexes = [...container.querySelectorAll('.d3-node')];
@@ -216,6 +225,58 @@ try {
         console.log(`CLAIMS   unresearched topic -> ${n} nodes on the shelf`);
         if (!n) throw new Error('unresearched topic rendered blank');
     }
+
+    // The search is a button until it is opened, so the input does not exist
+    // until something clicks it. If that click stops working the field is
+    // simply unreachable, with nothing on screen to say so.
+    step = 'search opens from its button';
+    if (container.querySelector('.search-input')) {
+        throw new Error('search input is in the DOM before its button was pressed');
+    }
+    await act(async () => {
+        container.querySelector('.search-open-btn')
+            ?.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+        await new Promise(r => setTimeout(r, 120));
+    });
+    if (!container.querySelector('.search-input')) throw new Error('search did not open');
+    console.log('SEARCH   button opens a field');
+
+    // Touch: no hover, so the first tap has to select rather than navigate.
+    // Faked by claiming the device has no hover, which is exactly what the
+    // app tests.
+    step = 'tap to select on touch';
+    const realMatchMedia = dom.window.matchMedia;
+    dom.window.matchMedia = (q) => ({
+        matches: /hover:\s*none/.test(q), media: q,
+        addListener() {}, removeListener() {},
+        addEventListener() {}, removeEventListener() {},
+    });
+    const beforeTitle = container.querySelector('.galaxy-title')?.textContent?.trim();
+    const firstHex = container.querySelector('.d3-node');
+    await act(async () => {
+        firstHex.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true, cancelable: true }));
+        await new Promise(r => setTimeout(r, 250));
+    });
+    const afterOneTap = container.querySelector('.galaxy-title')?.textContent?.trim();
+    if (afterOneTap !== beforeTitle) {
+        throw new Error('one tap navigated on a touch device - it should only select');
+    }
+    const footerAfterTap = container.querySelector('.galaxy-footer');
+    console.log(`TOUCH    one tap selects (footer ${footerAfterTap ? 'filled' : 'MISSING'}, still on "${afterOneTap}")`);
+    if (!footerAfterTap) throw new Error('nothing selected: the footer never appeared');
+    if (!container.querySelector('.footer-grip')) throw new Error('footer drag grip missing');
+
+    await act(async () => {
+        container.querySelector('.d3-node')
+            .dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true, cancelable: true }));
+        await new Promise(r => setTimeout(r, 300));
+    });
+    const afterTwoTaps = container.querySelector('.galaxy-title')?.textContent?.trim();
+    if (afterTwoTaps === beforeTitle) {
+        throw new Error('a second tap on the selected node did not open it');
+    }
+    console.log(`TOUCH    second tap opens it -> "${afterTwoTaps}"`);
+    dom.window.matchMedia = realMatchMedia;
 
     step = 'about panel';
     await act(async () => {
