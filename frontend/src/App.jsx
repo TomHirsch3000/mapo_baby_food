@@ -175,8 +175,6 @@ export default function App() {
         <div style={bannerStyle}>
           <span style={{ fontWeight: 700, color: '#334155' }}>{stats.claims}</span> claims
           <span style={dotStyle}>·</span>
-          <span style={{ fontWeight: 700, color: '#334155' }}>{stats.researchedClaims}</span> with evidence gathered
-          <span style={dotStyle}>·</span>
           <span style={{ color: '#64748b' }}>{stats.papers} papers, {stats.evaluated} assessed</span>
         </div>
       )}
@@ -186,7 +184,7 @@ export default function App() {
           <span style={{ color: '#64748b' }}>
             Up→down: <strong style={{ color: '#334155' }}>how true</strong> ·
             Left→right: <strong style={{ color: '#334155' }}>how strong the studies are</strong> ·
-            Size: <strong style={{ color: '#334155' }}>how much has been published</strong>
+            Colour: <strong style={{ color: '#334155' }}>the verdict</strong>
           </span>
         </div>
       )}

@@ -103,6 +103,16 @@ try {
     console.log(`TOPICS   mounted, ${topics} hexagons, svg children ${container.querySelector('svg')?.childNodes.length ?? 0}`);
     if (!topics) throw new Error('no topic nodes rendered');
 
+    // The theme headings are drawn straight to the DOM from the layout engine's
+    // cluster boxes, a path no other screen exercises. A topic missing from
+    // TOPIC_THEMES collects in a trailing "More" block rather than vanishing,
+    // so the failure this guards against is silent by design: the page still
+    // renders, just with an unnamed clump on the end.
+    const headings = [...container.querySelectorAll('.g-hex-bg text')].map(t => t.textContent);
+    console.log(`         themes: ${headings.join(' | ') || '(none)'}`);
+    if (headings.length < 2) throw new Error('theme headings did not render');
+    if (headings.some(h => h === 'MORE')) throw new Error('a topic is missing from TOPIC_THEMES');
+
     step = 'topics -> claims';
     await clickFirstNode('TOPICS');
     await settle(500);
@@ -117,6 +127,20 @@ try {
     const ev = container.querySelectorAll('.d3-node').length;
     console.log(`EVIDENCE ${ev} nodes, title "${container.querySelector('.galaxy-title')?.textContent?.trim()?.slice(0,50)}"`);
     if (!ev) throw new Error('EVIDENCE view rendered no nodes (blank screen)');
+
+    // The evidence view carries three pieces of bespoke furniture that no other
+    // screen exercises, and each fails silently: a compact summary in place of
+    // the paper title, hairline spokes to the claim, and a claim rendered as a
+    // card rather than the circle it used to be. A blank-screen check passes
+    // straight through all three.
+    const compact = [...container.querySelectorAll('.node-paper-compact')]
+        .filter(e => e.textContent.trim().length);
+    const spokes = container.querySelectorAll('.g-spokes line').length;
+    const anchorCard = container.querySelectorAll('.claim-card-bar').length;
+    console.log(`         ${compact.length} paper summaries e.g. "${compact[0]?.textContent.trim().replace(/\s+/g, ' ')}"`);
+    console.log(`         ${spokes} spokes · ${anchorCard} claim card(s) · ${container.querySelectorAll('.d3-link').length} citation ribbons`);
+    if (!compact.length) throw new Error('paper cards show no summary text');
+    if (!anchorCard) throw new Error('the claim anchor did not render as a card');
     step = 'toggles on the evidence view';
     for (const label of ['Publication year', 'Study strength', 'Conservative', 'Liberal', 'Balanced']) {
         const btn = [...container.querySelectorAll('.axis-toggle-btn')]

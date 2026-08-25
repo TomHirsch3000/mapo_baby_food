@@ -146,8 +146,9 @@ export const AboutPanel = ({ open, onClose }) => {
 
                 <Section title="Three levels">
                     <Level n="1" name="Topics">
-                        The areas of decision-making in raising a child, as hexagons. Each
-                        shows how many claims it holds and how many have been researched.
+                        The areas of decision-making in raising a child, as hexagons,
+                        grouped into themes. Each shows how many claims it holds and how
+                        much has been published on it.
                     </Level>
                     <Level n="2" name="Claims">
                         The common claims in that topic, plotted on the two axes below.

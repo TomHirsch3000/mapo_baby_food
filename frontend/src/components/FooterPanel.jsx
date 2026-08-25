@@ -112,8 +112,6 @@ export const FooterPanel = ({ selected, hovered }) => {
                             </p>
                             <StatRow>
                                 <Stat value={node.claimCount} label="claims" />
-                                <Stat value={node.researchedClaimCount} label="researched"
-                                      colour={node.researchedClaimCount ? STANCE_COLORS.supports : '#cbd5e1'} />
                                 <Stat value={(node.openAlexCount || 0).toLocaleString()} label="papers published" />
                                 <Stat value={node.paperCount} label="papers held" />
                             </StatRow>

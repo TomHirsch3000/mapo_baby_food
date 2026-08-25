@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
+import { LayoutEngine } from '../modules/LayoutEngine';
 
 /**
  * Loads the JSON produced by backend/build_claims_data.py and shapes it into
@@ -333,9 +334,26 @@ export const useClaimsData = (viewMode, activeTopic, activeClaim) => {
 
     const evidenceEdges = useMemo(() => {
         if (viewMode !== 'EVIDENCE' || !evidence) return NO_EDGES;
+        if (LayoutEngine.EVIDENCE_EDGE_MODE === 'none') return NO_EDGES;
         const ids = visibleEvidence ? visibleEvidence.ids : new Set();
+
+        // Only ribbons that touch the context box survive by default. A
+        // paper-to-paper citation says one author read another; it says nothing
+        // about whether either is right or on-topic, which is the only question
+        // this screen exists to answer - and at a hundred papers those ribbons
+        // are most of the ink. Set EVIDENCE_EDGE_MODE to "all" to get them back.
+        const contextIds = new Set(
+            (visibleEvidence ? visibleEvidence.papers : [])
+                .filter(p => p.stance === 'neutral')
+                .map(p => p.id));
+        const keep = LayoutEngine.EVIDENCE_EDGE_MODE === 'all'
+            ? () => true
+            : (e) => contextIds.has(e.source) || contextIds.has(e.target);
+
         return (evidence.edges || [])
             .filter(e => ids.has(e.source) && ids.has(e.target))
+            .filter(e => e.source !== e.target)     // the data carries self-loops
+            .filter(keep)
             .map(e => ({ source: e.source, target: e.target, importance: 1 }));
     }, [viewMode, evidence, visibleEvidence]);
 

@@ -30,6 +30,29 @@ export class LayoutEngine {
 
     static TOPIC_HEX_R = 150;
 
+    // Fourteen topics in one undifferentiated honeycomb read as fourteen equal
+    // decisions. They are not: a parent arrives already thinking "feeding" or
+    // "sleep", so the grid should answer that question before it answers any
+    // other. Topics are grouped into a handful of themes, each tessellating on
+    // its own and separated by a gap wide enough to read as a break.
+    //
+    // A topic missing from this table is not dropped - it collects in a
+    // trailing group - so adding a topic to claims.py cannot silently remove it
+    // from the landing page.
+    static TOPIC_THEMES = [
+        { name: "Eating",              topics: ["milk", "solids", "allergies", "nutrients", "food_safety"] },
+        { name: "Sleeping",            topics: ["safe_sleep", "sleep_patterns", "settling"] },
+        { name: "Playing & Learning",  topics: ["language", "play", "motor", "active_play"] },
+        { name: "Screens",             topics: ["screen_effects", "screen_time"] },
+    ];
+
+    // All × R. The gaps only have to beat the zero spacing of a shared edge to
+    // read as a break, and every pixel spent on them is a pixel the zoom-to-fit
+    // takes back out of the label type, so they stay tight.
+    static CLUSTER_GAP_X = 0.80;
+    static CLUSTER_GAP_Y = 0.70;
+    static CLUSTER_HEAD  = 0.42;   // vertical room for the theme heading
+
     /**
      * Hexagon centres on a true hex grid, arranged as offset columns.
      *
@@ -61,9 +84,14 @@ export class LayoutEngine {
         for (let i = 0; i < count; i++) {
             const col = i % cols;
             const row = Math.floor(i / cols);
-            // Short final row is centred rather than left-aligned.
+            // Short final row is nudged toward the middle - but only by WHOLE
+            // columns. Half a column looks tidier and does not tessellate: the
+            // interlock comes from the parity test below, and a fractional
+            // offset makes it fire the same way for adjacent cells, dropping
+            // them onto one row 1.5R apart when a shared edge needs sqrt(3)R.
+            // A five-cell block overlapped exactly this way.
             const inRow = Math.min(cols, count - row * cols);
-            const rowOffset = (cols - inRow) / 2;
+            const rowOffset = Math.floor((cols - inRow) / 2);
             cells.push({
                 x: (col + rowOffset - (cols - 1) / 2) * colStep,
                 y: (row - (rows - 1) / 2) * rowStep
@@ -73,21 +101,126 @@ export class LayoutEngine {
         return cells;
     }
 
+    /**
+     * Pack the theme blocks into rows and centre the result.
+     *
+     * Rows are contiguous chunks of the block list chosen to even out width, so
+     * themes stay in their declared order and the page does not reshuffle
+     * between renders.
+     */
+    static packRows(blocks, rowCount, gapX, gapY, head) {
+        const target = blocks.reduce((s, b) => s + b.w, 0) / rowCount;
+        const rows = [];
+        let cur = [], acc = 0;
+        blocks.forEach((b, i) => {
+            cur.push(b);
+            acc += b.w;
+            const remaining = blocks.length - i - 1;
+            const rowsLeft = rowCount - rows.length - 1;
+            // Break only if enough blocks remain to fill the rows still to come.
+            if (rowsLeft > 0 && acc >= target && remaining >= rowsLeft) {
+                rows.push(cur);
+                cur = [];
+                acc = 0;
+            }
+        });
+        if (cur.length) rows.push(cur);
+
+        const rowW = rows.map(r => r.reduce((s, b) => s + b.w, 0) + gapX * (r.length - 1));
+        const rowH = rows.map(r => Math.max(...r.map(b => b.h)) + head);
+        const W = Math.max(...rowW);
+        const H = rowH.reduce((s, h) => s + h, 0) + gapY * (rows.length - 1);
+
+        const placements = [];
+        let y = -H / 2;
+        rows.forEach((r, ri) => {
+            let x = -rowW[ri] / 2;
+            r.forEach(b => {
+                placements.push({ block: b, x, top: y, contentTop: y + head });
+                x += b.w + gapX;
+            });
+            y += rowH[ri] + gapY;
+        });
+        return { placements, w: W, h: H };
+    }
+
     applyTopicsLayout(nodes, sim) {
         const R = LayoutEngine.TOPIC_HEX_R;
-        const aspect = this.height ? (this.width / this.height) * 0.95 : 1.7;
-        const cells = LayoutEngine.hexCells(nodes.length, R, aspect);
+        const gapX = R * LayoutEngine.CLUSTER_GAP_X;
+        const gapY = R * LayoutEngine.CLUSTER_GAP_Y;
+        const head = R * LayoutEngine.CLUSTER_HEAD;
 
-        // Biggest topic takes the centre cell; nodes arrive sorted by volume.
-        nodes.forEach((n, i) => {
-            const cell = cells[i];
-            n.hexR = R;
-            n.fx = cell.x;
-            n.fy = cell.y + this.graphCenterY;
-            n.x = n.fx;
-            n.y = n.fy;
-            n.vx = 0;
-            n.vy = 0;
+        // The view mounts before the data arrives, so an empty first pass is
+        // normal, not a fault.
+        this.topicClusters = [];
+        if (!nodes.length) return sim;
+
+        // Group by theme. Anything not named in the table still gets a home.
+        const byId = new Map(nodes.map(n => [n.id, n]));
+        const claimed = new Set();
+        const groups = [];
+        for (const theme of LayoutEngine.TOPIC_THEMES) {
+            const members = theme.topics.map(id => byId.get(id)).filter(Boolean);
+            members.forEach(m => claimed.add(m.id));
+            if (members.length) groups.push({ name: theme.name, members });
+        }
+        const rest = nodes.filter(n => !claimed.has(n.id));
+        if (rest.length) groups.push({ name: "More", members: rest });
+
+        // Each theme tessellates on its own, squarish so no one block dominates.
+        const blocks = groups.map(g => {
+            const cells = LayoutEngine.hexCells(g.members.length, R, 1.15);
+            const minX = Math.min(...cells.map(c => c.x)) - R;
+            const maxX = Math.max(...cells.map(c => c.x)) + R;
+            const minY = Math.min(...cells.map(c => c.y)) - R * Math.sqrt(3) / 2;
+            const maxY = Math.max(...cells.map(c => c.y)) + R * Math.sqrt(3) / 2;
+            return { ...g, cells, minX, minY, w: maxX - minX, h: maxY - minY };
+        });
+
+        // Try every row count and keep whichever one the view can zoom in on
+        // hardest.
+        //
+        // Scoring this by aspect-similarity - the obvious choice, and what
+        // hexCells does one level down - picks the wrong arrangement here. On a
+        // 1600x900 canvas it preferred two rows (aspect 0.88 against the
+        // canvas's 1.69) over one (3.3), even though one row fits at 0.65 and
+        // two only at 0.55. Aspect is a proxy; the scale is the thing itself,
+        // and on this screen the scale IS the legibility of the labels.
+        const pad = R * 0.4 + 40;              // must match the view's fit padding
+        let best = null;
+        for (let rowCount = 1; rowCount <= blocks.length; rowCount++) {
+            const packed = LayoutEngine.packRows(blocks, rowCount, gapX, gapY, head);
+            const scale = this.width && this.height
+                ? Math.min(this.width / (packed.w + pad), this.height / (packed.h + pad), 1.4)
+                : 1;
+            if (!best || scale > best.scale) best = { ...packed, scale };
+        }
+
+        // Headings are drawn by the view, which has no idea where the blocks
+        // ended up, so hand it the boxes rather than make it recompute them.
+        this.topicClusters = best.placements.map(p => ({
+            name: p.block.name,
+            x: p.x,
+            y: p.top + this.graphCenterY,
+            w: p.block.w,
+            h: p.block.h + head,
+            labelX: p.x + p.block.w / 2,
+            labelY: p.top + this.graphCenterY + head * 0.60,
+        }));
+
+        best.placements.forEach(p => {
+            const b = p.block;
+            const ox = p.x - b.minX;
+            const oy = p.contentTop - b.minY;
+            b.members.forEach((n, i) => {
+                n.hexR = R;
+                n.fx = b.cells[i].x + ox;
+                n.fy = b.cells[i].y + oy + this.graphCenterY;
+                n.x = n.fx;
+                n.y = n.fy;
+                n.vx = 0;
+                n.vy = 0;
+            });
         });
 
         // Positions are fixed - no forces, or the hexagons would drift apart.
@@ -95,6 +228,125 @@ export class LayoutEngine {
             .force("charge", null).force("collide", null).force("link", null);
 
         return sim;
+    }
+
+    // --- Claim nodes: card or circle ---
+    //
+    // Flip to "circle" to get the original plot back: circles sized by
+    // literature volume with the caption floating underneath. Both paths are
+    // live in LayoutEngine and Graph.jsx; this constant is the only switch.
+    //
+    // The cards exist because the caption was the thing being read and it was
+    // the thing that collided - it hung free below a node, over whatever
+    // happened to be there. Putting the text in the node makes that collision
+    // impossible rather than merely resolved.
+    //
+    // The trade is real: a uniform card cannot also encode volume by area, so
+    // on this screen size stops meaning anything and the count moves to the
+    // footer. Position still means exactly what the axes say.
+    static CLAIM_NODE_STYLE = "card";
+
+    // 240 x ~25 characters, from a sweep. Widening used to cost positional
+    // fidelity, because a wider card needs more room in a row. With the claim
+    // set at 15px in a header band that stopped being true: a wider card wraps
+    // to FEWER lines, so it is shorter, and height is what the packing is
+    // actually short of. 240 reads better than 192 and displaces fewer cards -
+    // 14 across the quality midline against 19, and 3 across the supported
+    // line either way. Past ~260 the lines get too long and it reverses.
+    static CARD_W = 240;
+    static CARD_CHARS_PER_LINE = 25;   // ~15px semibold Inter across CARD_W
+    static CARD_LINE_H = 20;
+    static CARD_HEAD_PAD = 32;         // padding above and below the claim
+    static CARD_FOOT_H = 38;           // the for/against strip under the header
+
+    /**
+     * The claim sits in a coloured header; the counts sit in a white strip
+     * below it. Both halves are measured here rather than in the view, because
+     * the solver has to know the card's real height before anything is drawn.
+     */
+    static claimCardSize(n) {
+        const text = n.claim || n.name || "";
+        const lines = Math.max(1, Math.ceil(text.length / LayoutEngine.CARD_CHARS_PER_LINE));
+        const headerH = LayoutEngine.CARD_HEAD_PAD + lines * LayoutEngine.CARD_LINE_H;
+        return {
+            w: LayoutEngine.CARD_W,
+            h: headerH + LayoutEngine.CARD_FOOT_H,
+            headerH,
+        };
+    }
+
+    /**
+     * Place the cards: as near the axes' answer as possible, never overlapping.
+     *
+     * A force pair cannot promise this. forceX/forceY pull toward the true
+     * position at a fixed strength while a collide force fades with alpha, so
+     * the two settle into equilibrium wherever the pull balances the push -
+     * which is frequently a few tens of pixels INSIDE an overlap. Tuning the
+     * strengths trades one failure for the other: hard enough to always
+     * separate is hard enough to fling cards off their real position.
+     *
+     * So this is solved rather than simulated. Relax toward the target, sweep
+     * out every overlap, and finish with a separation-only pass that runs until
+     * nothing intersects. Deterministic, and the result is fixed with fx/fy so
+     * no later tick can walk it back.
+     *
+     * Overlaps are resolved along whichever axis needs the least movement, so a
+     * card slides sideways when that is the shorter escape - which is what
+     * keeps a column of claims at the same support level readable.
+     */
+    static separateCards(nodes, padding = 16) {
+        const overlapOf = (a, b) => {
+            const ox = (a._cardW + b._cardW) / 2 + padding - Math.abs(b.x - a.x);
+            const oy = (a._cardH + b._cardH) / 2 + padding - Math.abs(b.y - a.y);
+            return (ox > 0 && oy > 0) ? { ox, oy } : null;
+        };
+        // Least-movement is the wrong rule here. A card is 216 wide and about
+        // 110 tall, so the cheaper escape from an overlap is nearly always
+        // vertical - and vertical is netSupport, the axis carrying "how true",
+        // the one thing a reader takes from this screen. Sliding sideways costs
+        // more pixels and spends them on the axis that can afford it.
+        const VERTICAL_COST = 2;
+        const push = (a, b, o) => {
+            if (o.ox < o.oy * VERTICAL_COST) {
+                const shift = ((b.x - a.x) < 0 ? -1 : 1) * o.ox * 0.5;
+                a.x -= shift; b.x += shift;
+            } else {
+                const shift = ((b.y - a.y) < 0 ? -1 : 1) * o.oy * 0.5;
+                a.y -= shift; b.y += shift;
+            }
+        };
+
+        nodes.forEach(n => { n.x = n._targetX; n.y = n._targetY; });
+
+        // Relax: ease home, then push apart. The pull is deliberately weak - it
+        // only has to reclaim ground the separation over-gave.
+        for (let it = 0; it < 240; it++) {
+            nodes.forEach(n => {
+                n.x += (n._targetX - n.x) * 0.06;
+                n.y += (n._targetY - n.y) * 0.06;
+            });
+            for (let i = 0; i < nodes.length; i++) {
+                for (let j = i + 1; j < nodes.length; j++) {
+                    const o = overlapOf(nodes[i], nodes[j]);
+                    if (o) push(nodes[i], nodes[j], o);
+                }
+            }
+        }
+
+        // Separation only, to convergence. Without this the last relax step's
+        // pull can leave a residual intersection behind.
+        for (let sweep = 0; sweep < 400; sweep++) {
+            let clean = true;
+            for (let i = 0; i < nodes.length; i++) {
+                for (let j = i + 1; j < nodes.length; j++) {
+                    const o = overlapOf(nodes[i], nodes[j]);
+                    if (o) { push(nodes[i], nodes[j], o); clean = false; }
+                }
+            }
+            if (clean) break;
+        }
+
+        nodes.forEach(n => { n.fx = n.x; n.fy = n.y; });
     }
 
     // --- Claim View Layout ---
@@ -120,8 +372,14 @@ export class LayoutEngine {
         const assessed = nodes.filter(n => n.hasEvidence);
         const unassessed = nodes.filter(n => !n.hasEvidence);
 
-        const plotW = Math.min(this.width * 0.66, 1250);
-        const plotH = 560;
+        // Cards need materially more room than dots. Seven of them is roughly
+        // 170,000 px of card against a 700,000 px plot, and they do not spread
+        // evenly - netSupport bunches most claims into the supported band - so
+        // a plot sized for circles forces the solver to shove cards a long way
+        // from the position the axes gave them.
+        const isCard = LayoutEngine.CLAIM_NODE_STYLE === "card";
+        const plotW = isCard ? Math.min(this.width * 0.84, 1560) : Math.min(this.width * 0.66, 1250);
+        const plotH = isCard ? 660 : 560;
         const xScale = d3.scaleLinear().domain([0, 1]).range([-plotW / 2, plotW / 2]);
         const yScale = d3.scaleLinear().domain([-1, 1]).range([plotH / 2, -plotH / 2]);
 
@@ -167,6 +425,21 @@ export class LayoutEngine {
             n.fy = null;
         });
 
+        if (LayoutEngine.CLAIM_NODE_STYLE === "card") {
+            nodes.forEach(n => {
+                const { w, h, headerH } = LayoutEngine.claimCardSize(n);
+                n._cardW = w;
+                n._cardH = h;
+                n._cardHeaderH = headerH;
+            });
+            LayoutEngine.separateCards(nodes, 16);
+            // Solved, not simulated - so every force is off, exactly as on the
+            // topics screen. A live force here would only undo the solution.
+            sim.force("center", null).force("link", null).force("charge", null)
+                .force("x", null).force("y", null).force("collide", null);
+            return sim;
+        }
+
         sim.force("center", null)
             .force("link", null)
             .force("x", d3.forceX(d => d._targetX).strength(0.9))
@@ -178,6 +451,40 @@ export class LayoutEngine {
             .force("collide", d3.forceCollide().radius(d => (d.val || 20) + 40).iterations(8));
 
         return sim;
+    }
+
+    // --- Evidence view switches ---
+    //
+    // "context-only"  citation ribbons only where one end sits in the context
+    //                 box at the side. Those are the useful ones: they show the
+    //                 groundwork the argument leans on.
+    // "all"           every ribbon, including paper-to-paper. This is the
+    //                 original look. It is genuinely handsome and genuinely
+    //                 unreadable - a hundred papers is thousands of crossings,
+    //                 and none of them say anything about whether a paper is
+    //                 right or relevant, which is what this screen is for.
+    // "none"          no ribbons.
+    static EVIDENCE_EDGE_MODE = "context-only";
+
+    // A hairline from each paper to the claim it is evidence about. With the
+    // paper-to-paper ribbons gone this is the only thing left carrying "these
+    // all belong to that", so it is drawn faint enough to read as texture.
+    static EVIDENCE_SPOKES = true;
+
+    // The claim wears the same card here as it does one level up. It arrives by
+    // being clicked, so it has to be recognisably the same object.
+    static ANCHOR_CARD_W = 288;
+    static ANCHOR_CHARS_PER_LINE = 30;
+
+    static anchorCardSize(n) {
+        const text = n.claim || n.name || "";
+        const lines = Math.max(1, Math.ceil(text.length / LayoutEngine.ANCHOR_CHARS_PER_LINE));
+        const headerH = LayoutEngine.CARD_HEAD_PAD + lines * LayoutEngine.CARD_LINE_H;
+        return {
+            w: LayoutEngine.ANCHOR_CARD_W,
+            h: headerH + LayoutEngine.CARD_FOOT_H,
+            headerH,
+        };
     }
 
     // --- Evidence View Layout ---
@@ -348,6 +655,10 @@ export class LayoutEngine {
         // confidence and drops neutrals entirely. Pinning to the authoritative
         // value is what makes the node hold still when you drill into it.
         if (anchor) {
+            const card = LayoutEngine.anchorCardSize(anchor);
+            anchor._cardW = card.w;
+            anchor._cardH = card.h;
+            anchor._cardHeaderH = card.headerH;
             anchor._targetX = useYear
                 ? yearScale(anchor.medianYear ?? minYear)
                 : strengthScale(anchor.evidenceQuality ?? 0);   // mean designRank
@@ -381,7 +692,11 @@ export class LayoutEngine {
             .force("charge", d3.forceManyBody().strength(-60))
             .force("collide", d3.forceCollide()
                 .radius(d => d.type === 'claim-anchor'
-                    ? (d.val || 46) + 18
+                    // The anchor is a rectangle now. forceCollide only speaks
+                    // radii, so use the half-diagonal - it over-reserves at the
+                    // corners, which is the right way to be wrong for the one
+                    // node everything else has to stay off.
+                    ? Math.hypot(d._cardW || 240, d._cardH || 120) / 2 + 14
                     : (d._w ? d._w / 2 + 6 : 50))
                 .iterations(6));
 

@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useMemo, useState } from 'react';
 import * as d3 from 'd3';
-import { roundedHexagonPath, sanitizeId } from '../utils/d3-helpers';
+import { roundedHexagonPath, sanitizeId, topRoundedRectPath,
+         relativeLuminance, contrastRatio } from '../utils/d3-helpers';
 import { LayoutEngine } from '../modules/LayoutEngine';
 
 // Evidence palette, shared by claim nodes and evidence cards so a green node in
@@ -14,6 +15,87 @@ export const STANCE_COLORS = {
     neutral: '#94a3b8',
     unevaluated: '#cbd5e1',
 };
+
+/**
+ * Darken a stance colour until white type on it clears a contrast ratio.
+ *
+ * WCAG AA wants 4.5:1 for body text. Measured against this very scale, white
+ * never clears 4.38:1 anywhere on it and sits at 2.56:1 at the neutral
+ * midpoint - under even the 3:1 allowed for large text - and a third of the
+ * claims land in that pale middle. Walking lightness down in HSL keeps the hue,
+ * so the verdict still reads as green or red; it just stops being a tint that
+ * swallows white text. Colour is never the only channel anyway - every card
+ * spells out its counts underneath.
+ */
+const onColourTextCache = new Map();
+const readableOnWhiteText = (colour, target = 4.5) => {
+    const key = `${colour}|${target}`;
+    if (onColourTextCache.has(key)) return onColourTextCache.get(key);
+    const whiteLum = relativeLuminance({ r: 255, g: 255, b: 255 });
+    const hsl = d3.hsl(colour);
+    let out = d3.rgb(colour);
+    for (let i = 0; i < 60; i++) {
+        if (contrastRatio(relativeLuminance(out), whiteLum) >= target) break;
+        hsl.l = Math.max(0, hsl.l - 0.015);
+        out = d3.rgb(hsl);
+    }
+    const hex = out.formatHex();
+    onColourTextCache.set(key, hex);
+    return hex;
+};
+
+/**
+ * How dark a weak paper's text is allowed to be, by design rank.
+ *
+ * Fading the text with opacity is not available: the darkened stance colours
+ * clear 4.5:1 with nothing to spare, so any transparency puts 12.5px type under
+ * the AA floor. Ramping the CONTRAST TARGET instead gets the same gradient
+ * legitimately - the weakest paper sits exactly on 4.5:1, the strongest is
+ * pushed to 10:1 and reads as near-black. Nothing on the screen is ever less
+ * readable than the standard allows; the strong end is simply much stronger.
+ */
+const STRENGTH_TEXT = d3.scaleLinear().domain([0, 1]).range([4.5, 10]).clamp(true);
+
+// What a paper's stance is called on its own card. "for"/"against" rather than
+// "supports"/"refutes" because the card is only about 100px wide.
+const VERDICT_WORD = { supports: 'for', refutes: 'against', mixed: 'mixed', neutral: 'context' };
+
+// The study design, trimmed to fit. The data carries a normalised studyDesign
+// and the model's raw studyType, and the raw one runs to phrases like
+// "randomized controlled trial" that no small card can hold.
+const DESIGN_SHORT = {
+    'meta-analysis': 'meta-analysis',
+    'randomized controlled trial': 'RCT',
+    'randomised controlled trial': 'RCT',
+    'rct': 'RCT',
+    'clinical trial': 'trial',
+    'prospective cohort': 'cohort',
+    'cross-sectional': 'cross-sect.',
+    'case-control': 'case-control',
+    'case-report': 'case report',
+    'case report': 'case report',
+};
+const designLabel = (d) => {
+    const raw = String(d.studyDesign || d.studyType || 'other').toLowerCase().trim();
+    return DESIGN_SHORT[raw] || (raw.length > 13 ? `${raw.slice(0, 12)}\u2026` : raw);
+};
+
+/**
+ * How solidly a paper is drawn, from how good its design is.
+ *
+ * Bound to designRank, NOT to the x coordinate. In strength mode the two are
+ * the same thing and it reads as the left-to-right fade it is; in year mode x
+ * means date, and fading by it would say "old is weak", which is a different
+ * and false claim. This way a meta-analysis stays prominent on both axes.
+ *
+ * Floored well above zero because the ranks are lumpy: 63 of the 108 papers on
+ * a typical claim sit at exactly 0.30, so a fade running to nothing would take
+ * two thirds of the screen with it and read as a rendering fault.
+ *
+ * Only the fill and the border fade. The text does not - see the card render.
+ */
+const STRENGTH_FILL = d3.scaleLinear().domain([0, 1]).range([0.05, 0.58]).clamp(true);
+const STRENGTH_STROKE = d3.scaleLinear().domain([0, 1]).range([0.18, 1]).clamp(true);
 
 const STANCE_DIVERGING = d3.scaleLinear()
     .domain([-1, 0, 1])
@@ -94,11 +176,23 @@ export const Graph = ({
                     // imply a ranking as evidence they were excluded from.
                     n._w = 132;
                     n._h = 46;
+                    n._compactW = n._w;
+                    n._compactH = n._h;
                     return;
                 }
+                // Compact. The old card was sized to hold a paper title and
+                // still could not: at 80-190px wide a title wraps to five
+                // clipped lines of 9px type that nobody reads, while the card
+                // eats the plot. What a reader can use at this size is the
+                // verdict and the study design; the title arrives on hover.
+                //
+                // Citations still nudge the size, over a much narrower range,
+                // so a heavily-cited paper keeps some presence.
                 const cites = n.citationCount || 0;
-                n._w = 80 + Math.sqrt(cites) * 3;
-                n._h = 50 + Math.sqrt(cites) * 1.5;
+                n._w = Math.min(132, 96 + Math.sqrt(cites) * 1.1);
+                n._h = Math.min(76, 54 + Math.sqrt(cites) * 0.55);
+                n._compactW = n._w;
+                n._compactH = n._h;
             });
         }
 
@@ -122,10 +216,14 @@ export const Graph = ({
         let gHexBg = gMain.select(".g-hex-bg");
         if (gHexBg.empty()) gHexBg = gMain.append("g").attr("class", "g-hex-bg");
 
+        let gSpokes = gMain.select(".g-spokes");
+        if (gSpokes.empty()) gSpokes = gMain.append("g").attr("class", "g-spokes");
+
         let gNodes = gMain.select(".g-nodes");
         if (gNodes.empty()) gNodes = gMain.append("g").attr("class", "g-nodes");
 
         gAxisLayer.lower();
+        gSpokes.lower();
         gHexBg.lower();
         gLinks.lower();
         gLinkHeads.raise();
@@ -164,6 +262,29 @@ export const Graph = ({
             layoutEngine.current.applyTopicsLayout(currentNodes, sim);
         }
 
+        // ── Theme headings (landing) ─────────────────────────────────────────
+        // Redrawn every render, not just on a view change: a resize repacks the
+        // clusters into a different number of rows, so stale headings would sit
+        // over the wrong block.
+        gHexBg.selectAll("*").remove();
+        if (isTopics) {
+            (layoutEngine.current.topicClusters || []).forEach(c => {
+                // No container. The gap between blocks does the grouping, and a
+                // box around a honeycomb fights the tessellation it encloses -
+                // the shape is already the boundary. That leaves the heading as
+                // the only marker, so it carries a little more weight than it
+                // would sitting inside a panel.
+                gHexBg.append("text")
+                    .attr("x", c.labelX).attr("y", c.labelY)
+                    .attr("text-anchor", "middle")
+                    .style("font-family", "Inter, system-ui, sans-serif")
+                    .style("font-size", "25px").style("font-weight", 800)
+                    .style("letter-spacing", "0.12em")
+                    .style("fill", "#64748b").style("pointer-events", "none")
+                    .text(c.name.toUpperCase());
+            });
+        }
+
         /**
          * Push overlapping claim labels apart, vertically.
          *
@@ -184,6 +305,10 @@ export const Graph = ({
         const LABEL_GAP = 8;           // minimum gap between two labels
 
         const resolveLabelOverlaps = (list) => {
+            // Cards carry their text inside them, so there is no floating
+            // caption to unpick and the solver has already guaranteed the
+            // separation this pass exists to create.
+            if (LayoutEngine.CLAIM_NODE_STYLE === "card") return;
             const boxes = [];
             [...list]
                 .sort((a, b) => (a.y - (a.val || 20)) - (b.y - (b.val || 20)))
@@ -223,6 +348,29 @@ export const Graph = ({
         }
 
         if (isClaims) resolveLabelOverlaps(currentNodes);
+
+        // ── Spokes (evidence) ────────────────────────────────────────────────
+        // With paper-to-paper ribbons gone, nothing said these papers all belong
+        // to one claim. A hairline to the anchor says it without competing: it
+        // reads as texture radiating from the card, not as a network to trace.
+        // Context papers are excluded - they sit outside the plot precisely
+        // because they do NOT test the claim, and a spoke would assert they do.
+        gSpokes.selectAll("*").remove();
+        if (isEvidence && LayoutEngine.EVIDENCE_SPOKES) {
+            const anchorNode = currentNodes.find(n => n.type === 'claim-anchor');
+            if (anchorNode) {
+                gSpokes.selectAll("line")
+                    .data(currentNodes.filter(n => n.type !== 'claim-anchor' && !n._inBox))
+                    .enter().append("line")
+                    .attr("x1", d => d.x).attr("y1", d => d.y)
+                    .attr("x2", anchorNode.x).attr("y2", anchorNode.y)
+                    .attr("stroke", "#94a3b8")
+                    .attr("stroke-opacity", 0.13)
+                    .attr("stroke-width", 1)
+                    .style("pointer-events", "none");
+            }
+        }
+
 
         const getEdgeKey = (d) => `${(isClaims || isEvidence) ? "G" : "P"}|${d.source.id || d.source}|${d.target.id || d.target}`;
         const getGradientId = (d) => `link-gradient-${sanitizeId(getEdgeKey(d))}`;
@@ -482,14 +630,27 @@ export const Graph = ({
             } else if (isClaims) {
                 el.append("circle").attr("class", "orbit");
                 el.append("circle").attr("class", "core");
+                // Card furniture, appended before the label so the text sits on
+                // top of it. Whichever style is off is hidden, not removed.
+                el.append("rect").attr("class", "claim-card");
+                el.append("path").attr("class", "claim-card-bar");
                 const fo = el.append("foreignObject").attr("class", "galaxy-label-fo");
                 fo.append("xhtml:div").attr("class", "galaxy-label-div");
+                // The border goes on top of everything, so one outline traces
+                // the whole card - header included - and doubles as the focus
+                // ring without the header band painting over it.
+                el.append("rect").attr("class", "claim-card-edge");
             } else if (isEvidence && d.type === 'claim-anchor') {
-                // The claim keeps the circle it wore one level up.
+                // The claim keeps the CARD it wore one level up - same header
+                // band, same white counts strip - so drilling in reads as the
+                // same object moving rather than a different one appearing.
                 el.append("circle").attr("class", "orbit");
                 el.append("circle").attr("class", "core");
+                el.append("rect").attr("class", "claim-card");
+                el.append("path").attr("class", "claim-card-bar");
                 const fo = el.append("foreignObject").attr("class", "galaxy-label-fo");
                 fo.append("xhtml:div").attr("class", "galaxy-label-div");
+                el.append("rect").attr("class", "claim-card-edge");
             } else if (isEvidence) {
                 const w = d._w || 80;
                 const h = d._h || 50;
@@ -510,7 +671,13 @@ export const Graph = ({
                     .style("justify-content", "center")
                     .style("text-align", "center").style("overflow", "hidden")
                     .style("padding", "4px").style("box-sizing", "border-box")
-                    .html(n => `<div class="node-paper-title" style="width:100%;word-wrap:break-word;overflow-wrap:break-word;white-space:normal;line-height:1.2;text-align:center;">${n.title || n.name || 'Untitled'}</div>`);
+                    // Both states live in the DOM. Hover toggles display and
+                    // resizes the rects - no re-rendering of markup, so it stays
+                    // smooth across a hundred nodes.
+                    .html(() => `<div class="node-paper-compact"></div>`
+                              + `<div class="node-paper-title" style="display:none;width:100%;`
+                              + `word-wrap:break-word;overflow-wrap:break-word;white-space:normal;`
+                              + `line-height:1.25;text-align:center;"></div>`);
             }
             el.append("text").attr("class", "label-main");
             el.append("text").attr("class", "label-sub");
@@ -523,15 +690,101 @@ export const Graph = ({
         allNodes.each(function (d) {
             const el = d3.select(this);
             if (isClaims) {
+                const decided = (d.supports || 0) + (d.refutes || 0);
+                const colour = d.hasEvidence
+                    ? STANCE_DIVERGING(LayoutEngine.netFor(d, reading))
+                    : STANCE_COLORS.unevaluated;
+
+                if (LayoutEngine.CLAIM_NODE_STYLE === "card") {
+                    const w = d._cardW || LayoutEngine.CARD_W;
+                    const h = d._cardH || 120;
+                    const headerH = d._cardHeaderH || (h - LayoutEngine.CARD_FOOT_H);
+                    // White type demands a darker ground than the plot colour.
+                    const header = d.hasEvidence ? readableOnWhiteText(colour) : "#7c8b9e";
+
+                    el.select(".orbit").attr("r", 0).style("display", "none");
+                    el.select(".core").attr("r", 0).style("display", "none");
+
+                    el.select(".claim-card")
+                        .attr("x", -w / 2).attr("y", -h / 2)
+                        .attr("width", w).attr("height", h)
+                        .attr("rx", 14).attr("fill", "#ffffff").attr("stroke", "none")
+                        .style("display", null);
+
+                    // Header band: rounded at the top to match the card, square
+                    // at the bottom where the counts strip meets it.
+                    el.select(".claim-card-bar")
+                        .attr("d", topRoundedRectPath(w, headerH, 14))
+                        .attr("transform", `translate(0, ${-h / 2 + headerH / 2})`)
+                        .attr("fill", header)
+                        .style("display", null);
+
+                    el.select(".claim-card-edge")
+                        .attr("x", -w / 2).attr("y", -h / 2)
+                        .attr("width", w).attr("height", h)
+                        .attr("rx", 14).attr("fill", "none")
+                        .attr("stroke", header)
+                        .attr("stroke-opacity", d.hasEvidence ? 0.5 : 0.35)
+                        .attr("stroke-width", 1.5)
+                        .attr("stroke-dasharray", d.hasEvidence ? null : "4 3")
+                        .style("display", null);
+
+                    el.select(".galaxy-label-fo")
+                        .attr("x", -w / 2).attr("y", -h / 2)
+                        .attr("width", w).attr("height", h)
+                        .style("overflow", "hidden").style("pointer-events", "none");
+
+                    // Neutral and papers-published are gone from the plot; both
+                    // are still on the hover card in the footer, which is where
+                    // a number you have to actually read belongs.
+                    let counts;
+                    if (!d.hasEvidence) {
+                        counts = `<span style="color:#94a3b8;font-style:italic;">no evidence gathered</span>`;
+                    } else if (decided) {
+                        counts = `<span style="color:${STANCE_COLORS.supports};font-weight:750;">${d.supports || 0}</span>`
+                               + `<span style="color:#64748b;"> for</span>`
+                               + `<span style="color:#cbd5e1;"> · </span>`
+                               + `<span style="color:${STANCE_COLORS.refutes};font-weight:750;">${d.refutes || 0}</span>`
+                               + `<span style="color:#64748b;"> against</span>`;
+                    } else {
+                        counts = `<span style="color:#94a3b8;">nothing decisive either way</span>`;
+                    }
+
+                    el.select(".galaxy-label-div")
+                        .style("width", `${w}px`).style("height", `${h}px`)
+                        .style("display", "flex").style("flex-direction", "column")
+                        .style("font-family", "Inter, system-ui, sans-serif")
+                        .style("overflow", "hidden")
+                        .html(
+                            // The claim owns the card: centred on both axes in
+                            // the band, so a short claim sits as deliberately as
+                            // a long one.
+                            `<div style="height:${headerH}px;display:flex;align-items:center;` +
+                            `justify-content:center;text-align:center;padding:0 14px;` +
+                            `box-sizing:border-box;color:#ffffff;font-size:15px;` +
+                            `font-weight:640;line-height:1.34;letter-spacing:0.005em;` +
+                            `text-wrap:balance;">${d.claim || d.name || ""}</div>` +
+                            `<div style="height:${LayoutEngine.CARD_FOOT_H}px;display:flex;` +
+                            `align-items:center;justify-content:center;font-size:12.5px;` +
+                            `letter-spacing:0.01em;">${counts}</div>`
+                        );
+
+                    el.select(".label-main").text("");
+                    el.select(".label-sub").text("");
+                    return;
+                }
+
+                el.select(".claim-card").style("display", "none");
+                el.select(".claim-card-bar").style("display", "none");
+                el.select(".claim-card-edge").style("display", "none");
+                el.select(".orbit").style("display", null);
+                el.select(".core").style("display", null);
+
                 // Radius arrives in pixels from the OpenAlex match count, so size
                 // means "how much has been published around this question".
                 // Fill means stance: a claim with evidence is tinted by
                 // netSupport; one without is left hollow and grey.
                 const r = d.val || 20;
-                const decided = (d.supports || 0) + (d.refutes || 0);
-                const colour = d.hasEvidence
-                    ? STANCE_DIVERGING(LayoutEngine.netFor(d, reading))
-                    : STANCE_COLORS.unevaluated;
 
                 el.select(".orbit")
                     .attr("r", r + 9).attr("width", null).attr("height", null)
@@ -638,8 +891,8 @@ export const Graph = ({
                 }
 
                 // Text block sits in the lower third, inside the flat bottom edge.
-                const labelW = hexR * 1.32;
-                const labelH = hexR * 0.62;
+                const labelW = hexR * 1.36;
+                const labelH = hexR * 0.70;
                 el.select(".hex-label-fo")
                     .attr("x", -labelW / 2).attr("y", hexR * 0.20)
                     .attr("width", labelW).attr("height", labelH)
@@ -654,51 +907,82 @@ export const Graph = ({
                     .style("color", "#1e293b").style("line-height", "1.25")
                     .style("word-break", "break-word").style("overflow-wrap", "break-word")
                     .style("padding", "0 6px").style("box-sizing", "border-box")
-                    // Type scales with the hexagon: fourteen topics need a
-                    // smaller R than five did, and fixed 17px names overflowed
-                    // the longer ones ("Movement & Motor Skills").
+                    // Type scales with the hexagon, but what reaches the eye is
+                    // the fraction times the zoom-to-fit scale, and hexR cancels
+                    // out of that - so the fraction is the only real lever on
+                    // legibility. Clustering costs roughly a third of the scale
+                    // (gaps and headings are area the fit has to swallow), so
+                    // the name is set well above the old 0.098 to come out ahead
+                    // rather than merely level.
+                    //
+                    // Dropping the researched count pays for the extra line the
+                    // larger name needs: with every claim judged it read
+                    // "7 claims · 7 researched" on all fourteen topics.
                     .html(
-                        `<div style="font-size:${(hexR * 0.098).toFixed(1)}px;font-weight:700;">${d.name}</div>` +
-                        `<div style="font-size:${(hexR * 0.072).toFixed(1)}px;font-weight:500;color:#475569;margin-top:3px;">` +
-                        `${d.claimCount} claims · ${d.researchedClaimCount} researched</div>` +
-                        `<div style="font-size:${(hexR * 0.066).toFixed(1)}px;color:#64748b;margin-top:2px;">` +
+                        `<div style="font-size:${(hexR * 0.155).toFixed(1)}px;font-weight:700;">${d.name}</div>` +
+                        `<div style="font-size:${(hexR * 0.082).toFixed(1)}px;font-weight:500;color:#475569;margin-top:4px;">` +
+                        `${d.claimCount} claims</div>` +
+                        `<div style="font-size:${(hexR * 0.072).toFixed(1)}px;color:#64748b;margin-top:2px;">` +
                         `~${(d.openAlexCount || 0).toLocaleString()} papers published</div>`
                     );
                 el.select(".label-main").text("");
             } else if (isEvidence && d.type === 'claim-anchor') {
-                // Same colour rule as the claims screen, so the node reads as
-                // the very one you clicked to get here.
-                const r = d.val || 52;
+                // Same card as the claims screen, so the node reads as the very
+                // one you clicked to get here rather than a new object.
                 const colour = STANCE_DIVERGING(LayoutEngine.netFor(d, reading));
+                const header = readableOnWhiteText(colour);
+                const w = d._cardW || LayoutEngine.ANCHOR_CARD_W;
+                const h = d._cardH || 140;
+                const headerH = d._cardHeaderH || (h - LayoutEngine.CARD_FOOT_H);
 
-                el.select(".orbit")
-                    .attr("r", r + 16)
-                    .attr("fill", colour).attr("fill-opacity", 0.10)
-                    .attr("stroke", colour).attr("stroke-opacity", 0.55)
-                    .attr("stroke-width", 2).attr("stroke-dasharray", "5 4");
-                el.select(".core")
-                    .attr("r", r)
-                    .attr("fill", colour).attr("fill-opacity", 0.9)
-                    .attr("stroke", "#ffffff").attr("stroke-width", 3);
+                el.select(".orbit").attr("r", 0).style("display", "none");
+                el.select(".core").attr("r", 0).style("display", "none");
 
-                const labelW = 320;
+                el.select(".claim-card")
+                    .attr("x", -w / 2).attr("y", -h / 2)
+                    .attr("width", w).attr("height", h)
+                    .attr("rx", 16).attr("fill", "#ffffff").attr("stroke", "none")
+                    .style("display", null);
+
+                el.select(".claim-card-bar")
+                    .attr("d", topRoundedRectPath(w, headerH, 16))
+                    .attr("transform", `translate(0, ${-h / 2 + headerH / 2})`)
+                    .attr("fill", header)
+                    .style("display", null);
+
+                // Heavier ring than a claim card carries upstairs: this one is
+                // the subject of the screen, not one of a set.
+                el.select(".claim-card-edge")
+                    .attr("x", -w / 2).attr("y", -h / 2)
+                    .attr("width", w).attr("height", h)
+                    .attr("rx", 16).attr("fill", "none")
+                    .attr("stroke", header).attr("stroke-opacity", 0.85)
+                    .attr("stroke-width", 2.5)
+                    .style("display", null);
+
                 el.select(".galaxy-label-fo")
-                    .attr("x", -labelW / 2).attr("y", r + 24)
-                    .attr("width", labelW).attr("height", 130)
-                    .style("overflow", "visible").style("pointer-events", "none");
+                    .attr("x", -w / 2).attr("y", -h / 2)
+                    .attr("width", w).attr("height", h)
+                    .style("overflow", "hidden").style("pointer-events", "none");
+
                 el.select(".galaxy-label-div")
-                    .style("width", `${labelW}px`)
+                    .style("width", `${w}px`).style("height", `${h}px`)
                     .style("display", "flex").style("flex-direction", "column")
-                    .style("align-items", "center").style("text-align", "center")
                     .style("font-family", "Inter, system-ui, sans-serif")
-                    .style("color", "#1e293b").style("line-height", "1.3")
+                    .style("overflow", "hidden")
                     .html(
-                        `<div style="font-size:13px;font-weight:700;">${d.claim || ""}</div>` +
-                        `<div style="font-size:11px;margin-top:4px;">` +
-                        `<span style="color:${STANCE_COLORS.supports};font-weight:700;">${d.supports || 0}</span>` +
-                        `<span style="color:#94a3b8;"> for · </span>` +
-                        `<span style="color:${STANCE_COLORS.refutes};font-weight:700;">${d.refutes || 0}</span>` +
-                        `<span style="color:#94a3b8;"> against · ${d.neutral || 0} neutral</span></div>`
+                        `<div style="height:${headerH}px;display:flex;align-items:center;` +
+                        `justify-content:center;text-align:center;padding:0 16px;` +
+                        `box-sizing:border-box;color:#ffffff;font-size:15.5px;` +
+                        `font-weight:640;line-height:1.34;text-wrap:balance;">` +
+                        `${d.claim || ""}</div>` +
+                        `<div style="height:${LayoutEngine.CARD_FOOT_H}px;display:flex;` +
+                        `align-items:center;justify-content:center;font-size:12.5px;">` +
+                        `<span style="color:${STANCE_COLORS.supports};font-weight:750;">${d.supports || 0}</span>` +
+                        `<span style="color:#64748b;"> for</span>` +
+                        `<span style="color:#cbd5e1;"> · </span>` +
+                        `<span style="color:${STANCE_COLORS.refutes};font-weight:750;">${d.refutes || 0}</span>` +
+                        `<span style="color:#64748b;"> against</span></div>`
                     );
                 el.select(".label-main").text("");
                 el.select(".label-sub").text("");
@@ -714,18 +998,53 @@ export const Graph = ({
                     ? STANCE_COLORS.neutral
                     : (STANCE_COLORS[d.stance] || STANCE_COLORS.unevaluated);
 
+                // Weak studies recede, strong ones hold the eye. Context papers
+                // are exempt: they sit outside the plot and carry no design
+                // rank, so fading them would rank something never ranked.
+                const rank = Number.isFinite(d.designRank)
+                    ? d.designRank : LayoutEngine.DESIGN_X_FALLBACK;
+                d._strengthFill = isNeutral ? 0.14 : STRENGTH_FILL(rank);
+                d._strengthStroke = isNeutral ? 1 : STRENGTH_STROKE(rank);
+
                 el.select(".node-paper-bg").attr("x", -w / 2).attr("y", -h / 2)
                     .attr("width", w).attr("height", h).attr("fill-opacity", 1);
                 el.select(".node-paper-card").attr("x", -w / 2).attr("y", -h / 2).attr("width", w).attr("height", h)
-                    .attr("fill", cardColor).attr("fill-opacity", isNeutral ? 0.14 : 0.2)
+                    .attr("fill", cardColor).attr("fill-opacity", d._strengthFill)
                     .style("stroke", cardColor).style("stroke-width", isNeutral ? 1.25 : 2)
-                    .style("stroke-opacity", 1);
-                el.select(".node-fo-wrapper").attr("x", -w / 2).attr("y", -h / 2).attr("width", w).attr("height", h);
+                    .style("stroke-opacity", d._strengthStroke);
+                el.select(".node-fo-wrapper").attr("x", -w / 2).attr("y", -h / 2)
+                    .attr("width", w).attr("height", h);
+
+                // What the card says at rest: which way it points and how good
+                // the study is. Both are short enough to read at this size,
+                // which the title never was.
+                const verdict = VERDICT_WORD[d.stance] || 'untested';
+                const pct = d.confidence != null ? `${Math.round(d.confidence)}% ` : '';
+
+                el.select(".node-paper-compact")
+                    .style("width", "100%")
+                    .style("display", "flex").style("flex-direction", "column")
+                    .style("align-items", "center").style("justify-content", "center")
+                    .style("gap", "3px").style("text-align", "center")
+                    .html(
+                        // Darkened by rank, never by opacity - see STRENGTH_TEXT.
+                        `<div style="font-size:12.5px;font-weight:750;` +
+                        `color:${readableOnWhiteText(cardColor, STRENGTH_TEXT(rank))};` +
+                        `letter-spacing:0.01em;white-space:nowrap;">` +
+                        `${isNeutral ? 'context' : pct + verdict}</div>` +
+                        `<div style="font-size:10px;font-weight:600;` +
+                        `color:${readableOnWhiteText("#64748b", 4.5 + 3 * rank)};` +
+                        `letter-spacing:0.06em;text-transform:uppercase;white-space:nowrap;` +
+                        `overflow:hidden;text-overflow:ellipsis;max-width:${w - 14}px;">` +
+                        `${designLabel(d)}</div>`
+                    );
+
+                // Pre-filled but hidden; the hover handler reveals it.
                 el.select(".node-paper-title")
-                    .style("font-size", `${Math.min(12, Math.max(9, w / 12))}px`)
-                    .style("width", "100%").style("word-wrap", "break-word")
-                    .style("white-space", "normal").style("text-align", "center")
-                    .style("overflow-wrap", "anywhere");
+                    .style("font-size", "11.5px").style("font-weight", "600")
+                    .style("color", "#1e293b").style("padding", "0 4px")
+                    .style("overflow-wrap", "anywhere")
+                    .text(d.title || d.name || 'Untitled');
             }
         });
 
@@ -981,9 +1300,15 @@ export const Graph = ({
                 const hexR = currentNodes[0].hexR || 190;
                 const xExtent = d3.extent(currentNodes, d => d.x);
                 const yExtent = d3.extent(currentNodes, d => d.y);
-                const padding = hexR + 70;
+                // Trimmed from a full hexR + 70. Padding is dead space the fit
+                // has to swallow, and on this screen it comes straight back out
+                // of the label type.
+                const padding = hexR * 0.4 + 40;
                 const gw = (xExtent[1] - xExtent[0]) + hexR * 2;
-                const gh = (yExtent[1] - yExtent[0]) + hexR * 2;
+                // + the heading band above each cluster row, or the top row's
+                // heading is scrolled off the canvas by its own fit.
+                const gh = (yExtent[1] - yExtent[0]) + hexR * 2
+                           + hexR * LayoutEngine.CLUSTER_HEAD;
                 const scale = Math.min(
                     width / (gw + padding), height / (gh + padding), 1.4);
                 const cx = (xExtent[0] + xExtent[1]) / 2;
@@ -1064,15 +1389,75 @@ export const Graph = ({
                 fadeHeads(connectedEdgeIds);
             }
 
+            // Evidence papers open on hover. The compact card cannot show a
+            // title, so hovering trades the summary for it and grows the card to
+            // fit - and raises the node, or the expanded card would slide under
+            // its neighbours. Both states are already in the DOM, so this only
+            // toggles display and animates a rect.
+            if (isEvidence) {
+                // The open card is sized in SCREEN pixels, not world ones.
+                //
+                // Everything here lives under the zoom transform, so a card
+                // built to a fixed world size shrinks with the plot: zoomed out
+                // far enough to see all hundred papers - which is the view you
+                // are in when you want to skim titles - an 11.5px title renders
+                // at three or four. Counter-scaling the node group by 1/k makes
+                // the open card the same physical size at every zoom level, and
+                // scales the type with it, because scale() takes the text along.
+                const k = d3.zoomTransform(svgRef.current).k || 1;
+                const inv = 1 / k;
+
+                gNodes.selectAll(".d3-node").each(function (d) {
+                    if (d.type === 'claim-anchor') return;
+                    const el = d3.select(this);
+                    const open = d.id === focusNode.id;
+                    const cw = d._compactW || d._w || 96;
+                    const ch = d._compactH || d._h || 54;
+
+                    // Roughly 30 characters a line at 12.5px in a 288px card.
+                    const lines = Math.ceil((d.title || '').length / 30);
+                    const w = open ? 288 : cw;
+                    const h = open ? Math.max(ch, 30 + lines * 17) : ch;
+
+                    if (open) el.raise();
+
+                    el.transition("paper-open").duration(160)
+                        .attr("transform", open
+                            ? `translate(${d.x}, ${d.y}) scale(${inv})`
+                            : `translate(${d.x}, ${d.y})`);
+
+                    el.select(".node-paper-card")
+                        .transition("paper-open").duration(160)
+                        .attr("fill-opacity", open ? 0.30 : (d._strengthFill ?? 0.2))
+                        .style("stroke-opacity", open ? 1 : (d._strengthStroke ?? 1));
+
+                    el.selectAll(".node-paper-bg, .node-paper-card, .node-fo-wrapper")
+                        .transition("paper-open").duration(160)
+                        .attr("x", -w / 2).attr("y", -h / 2)
+                        .attr("width", w).attr("height", h);
+
+                    el.select(".node-paper-title").style("font-size", "12.5px");
+                    el.select(".node-paper-compact").style("display", open ? "none" : null);
+                    el.select(".node-paper-title").style("display", open ? null : "none");
+                });
+            }
+
             // Topics and claims emphasise in place. No transform changes here -
             // moving a node under the cursor makes the map feel unstable.
             if (isTopics || isClaims) {
                 gNodes.selectAll(".d3-node").each(function (d) {
                     const isFocus = d.id === focusNode.id;
-                    d3.select(this).select(isTopics ? ".orbit" : ".core")
+                    const isCard = isClaims && LayoutEngine.CLAIM_NODE_STYLE === "card";
+                    const shape = isTopics ? ".orbit" : (isCard ? ".claim-card-edge" : ".core");
+                    const resting = isTopics ? "none"
+                        : (isCard
+                            ? readableOnWhiteText(STANCE_DIVERGING(LayoutEngine.netFor(d, reading)))
+                            : "#ffffff");
+                    d3.select(this).select(shape)
                         .transition("focus-ring").duration(150)
-                        .attr("stroke", isFocus ? "#1e293b" : (isTopics ? "none" : "#ffffff"))
-                        .attr("stroke-width", isFocus ? 2.5 : 2);
+                        .attr("stroke", isFocus ? "#1e293b" : resting)
+                        .attr("stroke-opacity", isCard && !isFocus ? 0.5 : 1)
+                        .attr("stroke-width", isFocus ? 2.5 : (isCard ? 1.5 : 2));
                 });
             }
 
@@ -1095,9 +1480,43 @@ export const Graph = ({
                         return Math.max(1, Math.sqrt(d.weight || 1));
                     });
             }
-            if (isTopics || isClaims) {
-                gNodes.selectAll(".d3-node").each(function () {
+            // Papers collapse back to their summary.
+            if (isEvidence) {
+                gNodes.selectAll(".d3-node").each(function (d) {
+                    if (d.type === 'claim-anchor') return;
                     const el = d3.select(this);
+                    const w = d._compactW || d._w || 96;
+                    const h = d._compactH || d._h || 54;
+                    el.transition("paper-open").duration(160)
+                        .attr("transform", `translate(${d.x}, ${d.y})`);
+                    el.selectAll(".node-paper-bg, .node-paper-card, .node-fo-wrapper")
+                        .transition("paper-open").duration(160)
+                        .attr("x", -w / 2).attr("y", -h / 2)
+                        .attr("width", w).attr("height", h);
+                    el.select(".node-paper-card")
+                        .transition("paper-open").duration(160)
+                        .attr("fill-opacity", d._strengthFill ?? 0.2)
+                        .style("stroke-opacity", d._strengthStroke ?? 1);
+                    el.select(".node-paper-compact").style("display", null);
+                    el.select(".node-paper-title").style("display", "none");
+                });
+            }
+            if (isTopics || isClaims) {
+                const isCard = isClaims && LayoutEngine.CLAIM_NODE_STYLE === "card";
+                gNodes.selectAll(".d3-node").each(function (d) {
+                    const el = d3.select(this);
+                    if (isCard) {
+                        // The ring is the card's own border here, so it goes
+                        // back to its resting colour rather than to none - and
+                        // the last-hovered card keeps a black outline if this
+                        // is skipped.
+                        el.select(".claim-card-edge").transition("focus-ring").duration(150)
+                            .attr("stroke", readableOnWhiteText(
+                                STANCE_DIVERGING(LayoutEngine.netFor(d, reading))))
+                            .attr("stroke-opacity", 0.5)
+                            .attr("stroke-width", 1.5);
+                        return;
+                    }
                     el.select(".orbit").transition("focus-ring").duration(150)
                         .attr("stroke", "none").attr("stroke-width", 0);
                     el.select(".core").transition("focus-ring").duration(150)
