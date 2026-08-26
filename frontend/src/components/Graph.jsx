@@ -169,6 +169,20 @@ export const Graph = ({
         const currentEdges = edges.map(e => ({ ...e }));
 
         if (isEvidence) {
+            // Stretch importance across the range actually present before it
+            // becomes a size. Raw importance never uses its full 0-1 scale -
+            // on a typical claim it sits between 0.31 and 0.86 - so mapping it
+            // straight to pixels gave a 1.6x spread and cards that all looked
+            // the same, which is the complaint this is answering. Normalised
+            // per view, the least important paper is always the smallest and
+            // the range is always the full 3x.
+            const imps = currentNodes
+                .filter(n => n.type !== 'claim-anchor' && n.stance !== 'neutral')
+                .map(n => (Number.isFinite(n.importance) ? n.importance : 0.3));
+            const impLo = imps.length ? Math.min(...imps) : 0;
+            const impHi = imps.length ? Math.max(...imps) : 1;
+            const impSpan = (impHi - impLo) || 1;
+
             currentNodes.forEach(n => {
                 if (n.type === 'claim-anchor') return;   // drawn as a circle, not a card
                 if (n.stance === 'neutral') {
@@ -180,17 +194,16 @@ export const Graph = ({
                     n._compactH = n._h;
                     return;
                 }
-                // Compact. The old card was sized to hold a paper title and
-                // still could not: at 80-190px wide a title wraps to five
-                // clipped lines of 9px type that nobody reads, while the card
-                // eats the plot. What a reader can use at this size is the
-                // verdict and the study design; the title arrives on hover.
+                // Size is importance, and the range is deliberately wide.
                 //
-                // Citations still nudge the size, over a much narrower range,
-                // so a heavily-cited paper keeps some presence.
-                const cites = n.citationCount || 0;
-                n._w = Math.min(132, 96 + Math.sqrt(cites) * 1.1);
-                n._h = Math.min(76, 54 + Math.sqrt(cites) * 0.55);
+                // It used to be citations over 96-132px - a 1.4x spread that
+                // said almost nothing, because every card looked the same size.
+                // Importance spans 58-154px, 2.7x, so the papers worth reading
+                // are visibly bigger and the rest genuinely recede.
+                const imp = Number.isFinite(n.importance) ? n.importance : 0.3;
+                const t = Math.max(0, Math.min(1, (imp - impLo) / impSpan));
+                n._w = 52 + t * 104;
+                n._h = 38 + t * 54;
                 n._compactW = n._w;
                 n._compactH = n._h;
             });
@@ -1030,29 +1043,38 @@ export const Graph = ({
                 el.select(".node-fo-wrapper").attr("x", -w / 2).attr("y", -h / 2)
                     .attr("width", w).attr("height", h);
 
-                // What the card says at rest: which way it points and how good
-                // the study is. Both are short enough to read at this size,
-                // which the title never was.
-                const verdict = VERDICT_WORD[d.stance] || 'untested';
-                const pct = d.confidence != null ? `${Math.round(d.confidence)}% ` : '';
+                // The card carries its rank. "Which should I read first" is the
+                // question a hundred papers actually raise, and a position in a
+                // ranking answers it in two characters - which is all that fits
+                // on the smallest card. The verdict is already the colour.
+                //
+                // Everything else waits for the cursor. The design label only
+                // appears once the card is wide enough to hold it without
+                // squeezing the number.
+                const textColour = readableOnWhiteText(cardColor, STRENGTH_TEXT(rank));
+                const rankMark = d.rank != null
+                    ? `<div style="font-size:${Math.min(21, Math.max(13, w * 0.16)).toFixed(1)}px;` +
+                      `font-weight:800;letter-spacing:-0.02em;line-height:1;` +
+                      `color:${textColour};">` +
+                      `<span style="font-size:0.62em;font-weight:700;opacity:0.65;">#</span>` +
+                      `${d.rank}</div>`
+                    : `<div style="font-size:12.5px;font-weight:750;color:${textColour};">` +
+                      `${isNeutral ? 'context' : (VERDICT_WORD[d.stance] || 'untested')}</div>`;
+
+                const designMark = w >= 104
+                    ? `<div style="font-size:9.5px;font-weight:600;` +
+                      `color:${readableOnWhiteText("#64748b", 4.5 + 3 * rank)};` +
+                      `letter-spacing:0.05em;text-transform:uppercase;white-space:nowrap;` +
+                      `overflow:hidden;text-overflow:ellipsis;max-width:${w - 14}px;">` +
+                      `${designLabel(d)}</div>`
+                    : '';
 
                 el.select(".node-paper-compact")
                     .style("width", "100%")
                     .style("display", "flex").style("flex-direction", "column")
                     .style("align-items", "center").style("justify-content", "center")
-                    .style("gap", "3px").style("text-align", "center")
-                    .html(
-                        // Darkened by rank, never by opacity - see STRENGTH_TEXT.
-                        `<div style="font-size:12.5px;font-weight:750;` +
-                        `color:${readableOnWhiteText(cardColor, STRENGTH_TEXT(rank))};` +
-                        `letter-spacing:0.01em;white-space:nowrap;">` +
-                        `${isNeutral ? 'context' : pct + verdict}</div>` +
-                        `<div style="font-size:10px;font-weight:600;` +
-                        `color:${readableOnWhiteText("#64748b", 4.5 + 3 * rank)};` +
-                        `letter-spacing:0.06em;text-transform:uppercase;white-space:nowrap;` +
-                        `overflow:hidden;text-overflow:ellipsis;max-width:${w - 14}px;">` +
-                        `${designLabel(d)}</div>`
-                    );
+                    .style("gap", "2px").style("text-align", "center")
+                    .html(rankMark + designMark);
 
                 // Pre-filled but hidden; the hover handler reveals it.
                 el.select(".node-paper-title")

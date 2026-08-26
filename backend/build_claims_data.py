@@ -72,9 +72,12 @@ def claim_rows(conn, claim_key):
                p.all_institution_names, p.venue, p.doi, p.url,
                cp.stance, cp.confidence, cp.stance_summary,
                cp.evidence_strength, cp.study_type, cp.keyword_score,
-               cp.finding, cp.direction
+               cp.finding, cp.direction,
+               s.impact AS journal_impact, s.h_index AS journal_h_index,
+               s.display_name AS journal_name
         FROM claim_papers cp
         JOIN papers p USING(paperId)
+        LEFT JOIN sources s ON s.source_id = p.source_id
         WHERE cp.claim_key = ?
           -- Retracted work is excluded outright rather than down-weighted. The
           -- one found so far is a Cochrane review cited 1,528 times, which the
@@ -178,6 +181,59 @@ def summarise_claim(conn, claim_key, rows, openalex_count):
     }
 
 
+# The journal metric tops out around 120 and is worthless linearly - the gap
+# between 1 and 3 matters far more than the one between 40 and 50 - so it is
+# compressed on a log scale against a ceiling of 20, which is already an
+# exceptional journal.
+JOURNAL_CEILING = 20.0
+
+
+def importance_of(row, max_log_cites):
+    """
+    How much a paper should count as evidence, 0..1.
+
+    Three things, because any one alone is misleading. Design alone would rank a
+    tiny flawless RCT above a definitive meta-analysis. Citations alone reward
+    age and fashion, and a 1998 paper will always beat a 2024 one. The journal
+    alone says nothing about the specific paper. Together they answer "which of
+    these should I read first", which is the question a reader actually has.
+
+    Citations are normalised WITHIN the claim, so rank 1 means the most
+    important paper on this question rather than the most cited paper in
+    paediatrics. The journal metric is absolute - a strong journal is a strong
+    journal whichever claim it turns up under.
+    """
+    design_rank = design.rank_of(row["study_type"])
+
+    cites = row["cited_by_count"] or 0
+    cites_norm = (math.log1p(cites) / max_log_cites) if max_log_cites > 0 else 0.0
+
+    impact = row["journal_impact"] if "journal_impact" in row.keys() else None
+    journal_norm = (math.log1p(min(impact or 0.0, JOURNAL_CEILING))
+                    / math.log1p(JOURNAL_CEILING))
+
+    return max(0.0, min(1.0,
+        0.45 * design_rank + 0.35 * cites_norm + 0.20 * journal_norm))
+
+
+def rank_papers(papers):
+    """
+    Rank in place, 1 = read this first. Ties break on citations, then id, so
+    the order is total and stable across rebuilds.
+
+    The rank covers every paper held for the claim, including the weakly-cited
+    neutrals the evidence view filters out of the picture. That means a visible
+    paper can be #151 of 151 with only 116 on screen, which is why the total
+    travels with it - "#151" alone would look like a bug.
+    """
+    order = sorted(papers,
+                   key=lambda p: (-p["importance"], -(p["citationCount"] or 0), p["id"]))
+    for i, p in enumerate(order, 1):
+        p["rank"] = i
+        p["rankTotal"] = len(order)
+    return papers
+
+
 def build_paper_node(row):
     return {
         "id": row["paperId"],
@@ -209,11 +265,27 @@ def build_paper_node(row):
         "direction": (row["direction"] if "direction" in row.keys() else "") or "",
         "weight": round(paper_weight(row["evidence_strength"], row["cited_by_count"],
                                      row["confidence"]), 2),
+        # Where it was published, and how that journal performs. OpenAlex's
+        # 2yr_mean_citedness is the same quantity a journal impact factor
+        # measures - mean citations over the prior two years - and unlike the
+        # real thing it is free and covers everything indexed.
+        "journalName": (row["journal_name"] if "journal_name" in row.keys() else None) or "",
+        "journalImpact": (round(row["journal_impact"], 2)
+                          if "journal_impact" in row.keys() and row["journal_impact"] is not None
+                          else None),
+        "journalHIndex": (row["journal_h_index"] if "journal_h_index" in row.keys() else None),
     }
 
 
 def export_evidence(conn, claim_key, summary, rows, out_dir):
     papers = [build_paper_node(r) for r in rows]
+
+    # Importance and rank are per claim, so they are computed here where the
+    # whole set is in hand rather than per row.
+    max_log_cites = max((math.log1p(r["cited_by_count"] or 0) for r in rows), default=0.0)
+    for node, row in zip(papers, rows):
+        node["importance"] = round(importance_of(row, max_log_cites), 4)
+    rank_papers(papers)
 
     edges = []
     if papers:

@@ -168,6 +168,34 @@ try {
     // straight through all three.
     const compact = [...container.querySelectorAll('.node-paper-compact')]
         .filter(e => e.textContent.trim().length);
+    // Every paper carries its rank, and the ranks must be a clean 1..n: a
+    // duplicate or a gap means the scoring produced a tie it could not break,
+    // or that a paper fell out of the ranking pass entirely.
+    const ranks = [...container.querySelectorAll('.d3-node')]
+        .map(n => n.__data__).filter(d => d && d.type === 'paper')
+        .map(d => d.rank);
+    const missing = ranks.filter(r => r == null).length;
+    const unique = new Set(ranks).size;
+    console.log(`         ranks 1..${Math.max(...ranks)} · ${unique} distinct · ${missing} missing`);
+    if (missing) throw new Error(`${missing} papers have no rank`);
+    if (unique !== ranks.length) throw new Error('duplicate ranks - the tie-break is not total');
+
+    // Journal impact is the metric the ranking leans on; if the join silently
+    // produced nothing the ranking still "works", just on two inputs.
+    const withImpact = [...container.querySelectorAll('.d3-node')]
+        .map(n => n.__data__).filter(d => d && d.type === 'paper' && d.journalImpact != null).length;
+    console.log(`         ${withImpact}/${ranks.length} papers carry a journal impact`);
+    // Size has to actually vary. It stopped meaning anything once cards were
+    // uniform, and a normalisation bug would silently return it to that.
+    const widths = [...container.querySelectorAll('.d3-node')]
+        .map(n => n.__data__).filter(d => d && d.type === 'paper' && d.stance !== 'neutral')
+        .map(d => d._w).filter(Number.isFinite);
+    const spread = Math.max(...widths) / Math.min(...widths);
+    console.log(`         card widths ${Math.min(...widths).toFixed(0)}-${Math.max(...widths).toFixed(0)}px (${spread.toFixed(1)}x spread)`);
+    if (spread < 2) throw new Error(`card sizes barely differ (${spread.toFixed(2)}x) - importance is not driving size`);
+    if (withImpact < ranks.length * 0.5) {
+        throw new Error(`only ${withImpact} of ${ranks.length} papers have a journal impact`);
+    }
     const spokes = container.querySelectorAll('.g-spokes line').length;
     const anchorCard = container.querySelectorAll('.claim-card-bar').length;
     console.log(`         ${compact.length} paper summaries e.g. "${compact[0]?.textContent.trim().replace(/\s+/g, ' ')}"`);

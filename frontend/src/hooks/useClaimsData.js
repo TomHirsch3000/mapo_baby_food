@@ -276,6 +276,15 @@ export const useClaimsData = (viewMode, activeTopic, activeClaim) => {
             studyDesign: p.studyDesign,
             designRank: p.designRank,
             weight: p.weight,
+            // Read-this-first order within the claim, and the score behind it:
+            // study design, citations relative to the claim, and the journal's
+            // own impact.
+            rank: p.rank,
+            rankTotal: p.rankTotal,
+            importance: p.importance,
+            journalName: p.journalName,
+            journalImpact: p.journalImpact,
+            journalHIndex: p.journalHIndex,
             group: p.stance,
             xGroup: p.stance,
             primaryField: p.studyDesign || p.studyType,
