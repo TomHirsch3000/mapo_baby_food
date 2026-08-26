@@ -17,13 +17,6 @@ const STANCE_LABELS = {
     neutral: 'Does not test this claim',
 };
 
-const STRENGTH_COLORS = {
-    strong: '#10b981',
-    moderate: '#6366f1',
-    limited: '#f59e0b',
-    mixed: '#94a3b8',
-};
-
 const TestedAs = ({ node }) => {
     // Only worth showing where the two wordings diverge - i.e. where the
     // headline is prescriptive and no study could test it verbatim. The reader
@@ -179,10 +172,15 @@ const NodeDetail = ({ node, kind }) => {
                             {node.studyDesign && (
                                 <Badge text={node.studyDesign} colour="#64748b" />
                             )}
-                            {node.evidenceStrength && (
-                                <Badge text={`${node.evidenceStrength} evidence`}
-                                       colour={STRENGTH_COLORS[node.evidenceStrength] || '#94a3b8'} />
-                            )}
+                            {/* The model's evidence-strength label used to be
+                                badged here. It is gone: it duplicated the study
+                                design beside it and disagreed with it, and the
+                                design is the half that is right. Of the papers
+                                it called "strong", 16% were a meta-analysis or
+                                RCT and 23% were designs its own instructions
+                                call limited; cross-sectional studies got
+                                "strong" 359 times and "limited" 31 times. The
+                                field is still in the data for auditing. */}
                         </div>
 
                         {node.stance && node.stance !== 'unevaluated' && (

@@ -458,7 +458,10 @@
     /* Its own row, full width, wrapping. The corners are absolutely
        positioned, so a top margin is all it takes to clear them. */
     .galaxy-title {
-        margin-top: 46px;
+        /* The buttons sit at top: 12 and stand 38 tall, so their bottom edge is
+           at 50 - a 46px offset put the title underneath them by four pixels.
+           62 clears them with room to breathe. */
+        margin-top: 62px;
         max-width: calc(100vw - 24px);
         font-size: 0.92rem;
         letter-spacing: 1.2px;
@@ -487,8 +490,12 @@
 
     /* Search is a button until it is opened, at every width now, so the CSS
        collapse this used to do has moved into the component. Open, it takes
-       the room it needs. */
+       the room it needs - and there is not enough of it to also keep the
+       breadcrumb, so the breadcrumb steps aside until the field closes. The
+       device back gesture still goes up a level, and closing the field brings
+       the button straight back. */
     .search-input { width: min(56vw, 230px); }
+    .galaxy-header:has(.search-bar.is-open) .controls-left { display: none; }
     .autocomplete-dropdown { left: auto; right: 0; width: min(86vw, 330px); }
 
 

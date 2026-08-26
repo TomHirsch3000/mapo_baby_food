@@ -250,7 +250,24 @@ export const Graph = ({
             });
 
         svg.call(zoom);
-        svg.on("click.unselect", (event) => {
+        // Tap-to-dismiss, via pointer events rather than click.
+        //
+        // d3-zoom owns the touch sequence and preventDefaults it, so on a phone
+        // the synthetic click never arrived and a selected paper could not be
+        // dismissed at all. Pointer events fire for mouse and touch alike; the
+        // movement threshold is what stops the end of a pan from counting as a
+        // tap on the background.
+        let tapStart = null;
+        svg.on("pointerdown.unselect", (event) => {
+            tapStart = { x: event.clientX, y: event.clientY, target: event.target };
+        });
+        svg.on("pointerup.unselect pointercancel.unselect", (event) => {
+            const start = tapStart;
+            tapStart = null;
+            if (!start || event.type === 'pointercancel') return;
+            const moved = Math.hypot(event.clientX - start.x, event.clientY - start.y);
+            if (moved > 8) return;                            // that was a pan
+            if (event.target !== start.target) return;
             if (event.target.tagName === 'svg') onBackgroundClick();
         });
 
@@ -1034,14 +1051,25 @@ export const Graph = ({
                 d._strengthFill = isNeutral ? 0.14 : STRENGTH_FILL(rank);
                 d._strengthStroke = isNeutral ? 1 : STRENGTH_STROKE(rank);
 
-                el.select(".node-paper-bg").attr("x", -w / 2).attr("y", -h / 2)
-                    .attr("width", w).attr("height", h).attr("fill-opacity", 1);
-                el.select(".node-paper-card").attr("x", -w / 2).attr("y", -h / 2).attr("width", w).attr("height", h)
-                    .attr("fill", cardColor).attr("fill-opacity", d._strengthFill)
+                // Geometry is skipped while a card is open. The open size is
+                // owned by the hover/pin pass, and this render would otherwise
+                // stamp the compact size back over it - so whichever effect
+                // happened to run last decided the size, which is a race, not
+                // a rule. Colours and content still update.
+                if (!d._paperOpen) {
+                    el.select(".node-paper-bg").attr("x", -w / 2).attr("y", -h / 2)
+                        .attr("width", w).attr("height", h);
+                    el.select(".node-paper-card").attr("x", -w / 2).attr("y", -h / 2)
+                        .attr("width", w).attr("height", h);
+                    el.select(".node-fo-wrapper").attr("x", -w / 2).attr("y", -h / 2)
+                        .attr("width", w).attr("height", h);
+                }
+                el.select(".node-paper-bg").attr("fill-opacity", 1);
+                el.select(".node-paper-card")
+                    .attr("fill", cardColor)
+                    .attr("fill-opacity", d._paperOpen ? 0.30 : d._strengthFill)
                     .style("stroke", cardColor).style("stroke-width", isNeutral ? 1.25 : 2)
-                    .style("stroke-opacity", d._strengthStroke);
-                el.select(".node-fo-wrapper").attr("x", -w / 2).attr("y", -h / 2)
-                    .attr("width", w).attr("height", h);
+                    .style("stroke-opacity", d._paperOpen ? 1 : d._strengthStroke);
 
                 // The card carries its rank. "Which should I read first" is the
                 // question a hundred papers actually raise, and a position in a
@@ -1061,7 +1089,10 @@ export const Graph = ({
                     : `<div style="font-size:12.5px;font-weight:750;color:${textColour};">` +
                       `${isNeutral ? 'context' : (VERDICT_WORD[d.stance] || 'untested')}</div>`;
 
-                const designMark = w >= 104
+                // Only a card with room to spare gets the design label. Below
+                // that the number is the whole message - a squeezed rank with a
+                // clipped word under it reads as neither.
+                const designMark = w >= 124
                     ? `<div style="font-size:9.5px;font-weight:600;` +
                       `color:${readableOnWhiteText("#64748b", 4.5 + 3 * rank)};` +
                       `letter-spacing:0.05em;text-transform:uppercase;white-space:nowrap;` +
@@ -1076,12 +1107,54 @@ export const Graph = ({
                     .style("gap", "2px").style("text-align", "center")
                     .html(rankMark + designMark);
 
-                // Pre-filled but hidden; the hover handler reveals it.
+                // The expanded content is built HERE and only here, once per
+                // render, hidden until the card opens. It used to be built in
+                // the hover pass while this one wrote a plain title over the
+                // top, so whether a card showed its detail came down to which
+                // effect happened to run last - which is why some had it and
+                // some did not.
+                //
+                // The model's own strength label is deliberately absent. It
+                // duplicated the design while disagreeing with it: only 16% of
+                // what it calls strong is a meta-analysis or RCT, and 23% are
+                // designs its own instructions call limited.
+                const detail = [];
+                if (isNeutral) {
+                    detail.push(`<span style="color:#64748b;">context only</span>`);
+                } else {
+                    const conf = d.confidence != null ? `${Math.round(d.confidence)}% ` : '';
+                    detail.push(`<span style="color:${readableOnWhiteText(cardColor)};` +
+                                `font-weight:750;">${conf}${VERDICT_WORD[d.stance] || 'untested'}</span>`);
+                }
+                detail.push(`<span style="color:#475569;">${designLabel(d)}</span>`);
+                if (d.journalImpact != null) {
+                    detail.push(`<span style="color:#475569;">impact <strong>${d.journalImpact}</strong></span>`);
+                }
+                detail.push(`<span style="color:#94a3b8;">${d.citationCount || 0} cites</span>`);
+
                 el.select(".node-paper-title")
-                    .style("font-size", "11.5px").style("font-weight", "600")
-                    .style("color", "#1e293b").style("padding", "0 4px")
+                    .style("padding", "0 4px")
                     .style("overflow-wrap", "anywhere")
-                    .text(d.title || d.name || 'Untitled');
+                    .html(
+                        // The title is clamped and the detail is not, so if the
+                        // height is ever wrong again it is the title that loses
+                        // a line rather than the detail vanishing. The title is
+                        // also in the panel at the bottom; the detail is only
+                        // here. Belt and braces for the measurement above.
+                        `<div style="font-size:12.5px;font-weight:650;color:#1e293b;` +
+                        `line-height:1.28;display:-webkit-box;-webkit-line-clamp:5;` +
+                        `-webkit-box-orient:vertical;overflow:hidden;">` +
+                        `${d.title || d.name || 'Untitled'}</div>` +
+                        `<div style="margin-top:6px;padding-top:5px;` +
+                        `border-top:1px solid rgba(0,0,0,0.07);font-size:10.5px;` +
+                        `line-height:1.5;display:flex;flex-wrap:wrap;gap:0 8px;` +
+                        `justify-content:center;flex:0 0 auto;">` +
+                        (d.rank != null
+                            ? `<span style="color:#4f46e5;font-weight:800;">#${d.rank}` +
+                              `${d.rankTotal ? `/${d.rankTotal}` : ''}</span>`
+                            : '') +
+                        detail.join('') + `</div>`
+                    );
             }
         });
 
@@ -1500,39 +1573,106 @@ export const Graph = ({
                 const k = d3.zoomTransform(svgRef.current).k || 1;
                 const inv = 1 / k;
 
+                // Two cards can be open: the one pinned by clicking and the
+                // one under the cursor. Keying "open" off the single focus node
+                // meant a pinned card closed the moment anything else was
+                // hovered - and in a plot this dense, moving the pointer away
+                // from a card almost always crosses another one, so pinning
+                // looked like it simply did not work.
+                const pinnedId = selected && !isReturning ? selected.id : null;
+                const hoverId = hovered ? hovered.id : null;
+
                 gNodes.selectAll(".d3-node").each(function (d) {
                     if (d.type === 'claim-anchor') return;
                     const el = d3.select(this);
-                    const open = d.id === focusNode.id;
+                    const open = d.id === pinnedId || d.id === hoverId;
                     const cw = d._compactW || d._w || 96;
                     const ch = d._compactH || d._h || 54;
 
-                    // Roughly 30 characters a line at 12.5px in a 288px card.
-                    const lines = Math.ceil((d.title || '').length / 30);
-                    const w = open ? 288 : cw;
-                    const h = open ? Math.max(ch, 30 + lines * 17) : ch;
+                    // Capped against the viewport, not just a fixed 288px.
+                    // Sized in screen pixels the card was the same width on a
+                    // phone as on a desktop, which is three quarters of a 390px
+                    // screen before any of the detail below is added - it stops
+                    // being a card on the map and becomes a takeover.
+                    const openW = Math.min(300, width * 0.72);
+                    const w = open ? openW : cw;
 
-                    if (open) el.raise();
+                    // Height is MEASURED, not estimated.
+                    //
+                    // It used to be guessed from the title's character count at
+                    // an assumed 37 characters a line - optimistic for 12.5px
+                    // semibold in a 276px box, where the truth is nearer 30 -
+                    // plus a flat 44px for a detail row that wraps to two lines
+                    // once a paper has five things to say about itself. Long
+                    // titles therefore overflowed a box with overflow: hidden
+                    // and lost their detail entirely, while short ones kept it.
+                    // That is the "some cards show the data and some do not"
+                    // report: it was never about which card, it was about how
+                    // long its title happened to be.
+                    //
+                    // So the content is laid out unconstrained and then asked
+                    // how tall it is. scrollHeight reads 0 where nothing lays
+                    // out - jsdom - so the old estimate stays as the fallback.
+                    let h = ch;
+                    if (open) {
+                        el.select(".node-paper-compact").style("display", "none");
+                        el.select(".node-paper-title").style("display", null);
+                        el.select(".node-fo-wrapper")
+                            .attr("x", -w / 2).attr("width", w).attr("height", 4000);
+
+                        const titleEl = el.select(".node-paper-title").node();
+                        const measured = titleEl ? titleEl.scrollHeight : 0;
+                        const fallback = 26 + Math.ceil((d.title || '').length / 30) * 16 + 60;
+                        h = Math.min(height * 0.5,
+                                     Math.max(ch, (measured > 0 ? measured + 18 : fallback)));
+                    }
+
                     d._paperOpen = open;
 
-                    el.transition("paper-open").duration(160)
+                    // Three transitions, three DIFFERENT names. Two with the
+                    // same name on one element interrupt each other, and
+                    // .node-paper-card was the target of both the ink and the
+                    // geometry - so whichever was created second cancelled the
+                    // first outright and the card never resized. It looked like
+                    // hover working on some cards and not others, because the
+                    // survivor depended on which pass had touched them last.
+                    el.transition("paper-xform").duration(160)
                         .attr("transform", open
                             ? `translate(${d.x}, ${d.y}) scale(${inv})`
                             : `translate(${d.x}, ${d.y})`);
 
                     el.select(".node-paper-card")
-                        .transition("paper-open").duration(160)
+                        .transition("paper-ink").duration(160)
                         .attr("fill-opacity", open ? 0.30 : (d._strengthFill ?? 0.2))
                         .style("stroke-opacity", open ? 1 : (d._strengthStroke ?? 1));
 
+                    // Geometry is set outright, not animated.
+                    //
+                    // A named transition on these rects reliably failed to run
+                    // for a card opening from compact - scheduled, never
+                    // started, so the card kept its small size while every
+                    // other signal said it was open. That is the "some cards
+                    // show their detail and some do not" symptom. Interrupting
+                    // first, raising later and renaming the transition all
+                    // failed to shift it, so the animation is not worth the
+                    // correctness: the size is applied directly and the fade of
+                    // the ink still carries the change.
                     el.selectAll(".node-paper-bg, .node-paper-card, .node-fo-wrapper")
-                        .transition("paper-open").duration(160)
                         .attr("x", -w / 2).attr("y", -h / 2)
                         .attr("width", w).attr("height", h);
 
-                    el.select(".node-paper-title").style("font-size", "12.5px");
-                    el.select(".node-paper-compact").style("display", open ? "none" : null);
-                    el.select(".node-paper-title").style("display", open ? null : "none");
+                    if (!open) {
+                        el.select(".node-paper-compact").style("display", null);
+                        el.select(".node-paper-title").style("display", "none");
+                    }
+
+                    // Raised LAST, after the transitions are scheduled. Raising
+                    // is a DOM move, and moving the element first left the
+                    // geometry transition scheduled but never running - the card
+                    // stayed its compact size while every other sign said it was
+                    // open. Ordering it after costs nothing: the paint happens
+                    // once this pass returns either way.
+                    if (open) el.raise();
                 });
             }
 
@@ -1584,14 +1724,13 @@ export const Graph = ({
                     const el = d3.select(this);
                     const w = d._compactW || d._w || 96;
                     const h = d._compactH || d._h || 54;
-                    el.transition("paper-open").duration(160)
+                    el.transition("paper-xform").duration(160)
                         .attr("transform", `translate(${d.x}, ${d.y})`);
                     el.selectAll(".node-paper-bg, .node-paper-card, .node-fo-wrapper")
-                        .transition("paper-open").duration(160)
                         .attr("x", -w / 2).attr("y", -h / 2)
                         .attr("width", w).attr("height", h);
                     el.select(".node-paper-card")
-                        .transition("paper-open").duration(160)
+                        .transition("paper-ink").duration(160)
                         .attr("fill-opacity", d._strengthFill ?? 0.2)
                         .style("stroke-opacity", d._strengthStroke ?? 1);
                     el.select(".node-paper-compact").style("display", null);
@@ -1623,7 +1762,10 @@ export const Graph = ({
             gNodes.selectAll(".d3-node")
                 .transition("highlight").duration(200).style("opacity", 1);
         }
-    }, [hovered, selected, viewMode, edges, isReturning]);
+        // width/height are here because the open card is capped against the
+        // viewport: without them a resize leaves an already-open card sized for
+        // the old one until the next hover.
+    }, [hovered, selected, viewMode, edges, isReturning, width, height, reading]);
 
     return <svg ref={svgRef} className="galaxy-canvas" width={width} height={height} />;
 };

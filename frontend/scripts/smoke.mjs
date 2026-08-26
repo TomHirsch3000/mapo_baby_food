@@ -220,6 +220,116 @@ try {
         throw new Error(`${dimmed.length} nodes arrived dimmed - stale focus from the previous view`);
     }
 
+    // A clicked paper must stay open when the pointer leaves it. Clicking is
+    // how you pin one to read; if it collapses the moment you move the mouse,
+    // pinning is useless.
+    // The claim sits where its best evidence is, not in the middle of the pack.
+    // A plain mean of every design rank left it huddled among the weak studies
+    // that make up most of any literature; it should be pulled right when
+    // strong work exists.
+    step = 'the claim sits toward the stronger studies';
+    {
+        const nodes = [...container.querySelectorAll('.d3-node')].map(n => n.__data__);
+        const anchor = nodes.find(d => d && d.type === 'claim-anchor');
+        const ranks = nodes.filter(d => d && d.type === 'paper' && Number.isFinite(d.designRank))
+                           .map(d => d.designRank).sort((a, b) => a - b);
+        const median = ranks[Math.floor(ranks.length / 2)];
+        const best = ranks[ranks.length - 1];
+        console.log(`ANCHOR   claim quality ${anchor.evidenceQuality?.toFixed(2)} vs median paper ${median.toFixed(2)}, best ${best.toFixed(2)}`);
+        if (best > median && !(anchor.evidenceQuality > median)) {
+            throw new Error(`the claim sits at ${anchor.evidenceQuality} - at or left of the median paper (${median}) despite stronger studies existing (${best})`);
+        }
+    }
+
+    step = 'a pinned paper stays open';
+    {
+        const papers = [...container.querySelectorAll('.d3-node')]
+            .filter(n => n.__data__ && n.__data__.type === 'paper');
+        const target = papers[0];
+        const compact = target.__data__._compactW;
+
+        await act(async () => {
+            target.dispatchEvent(new dom.window.MouseEvent('mouseover', { bubbles: true }));
+            target.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true, cancelable: true }));
+            await new Promise(r => setTimeout(r, 300));
+        });
+        const openW = parseFloat(target.querySelector('.node-paper-card')?.getAttribute('width'));
+
+        await act(async () => {
+            target.dispatchEvent(new dom.window.MouseEvent('mouseout', { bubbles: true }));
+            await new Promise(r => setTimeout(r, 400));
+        });
+        const afterW = parseFloat(target.querySelector('.node-paper-card')?.getAttribute('width'));
+
+        // Open, the card has to carry the detail - not just the title.
+        const openText = target.querySelector('.node-paper-title')?.textContent || '';
+        const has = (re, what) => { if (!re.test(openText)) throw new Error(`open card is missing ${what}: "${openText.slice(0,90)}"`); };
+        has(/#\d+/, 'its rank');
+        has(/\d+%\s*(for|against|mixed)|context only/, 'the verdict');
+        has(/\d+ cites/, 'a citation count');
+        // Structural guard, not a size one: the detail row must be a sibling of
+        // the title with its own box, so a title that overruns clamps instead
+        // of pushing the detail out of a box that hides its overflow.
+        const titleDiv = target.querySelector('.node-paper-title');
+        const kids = titleDiv ? [...titleDiv.children] : [];
+        if (kids.length !== 2) throw new Error(`open card should be title + detail, found ${kids.length} blocks`);
+        if (!/line-clamp/.test(kids[0].getAttribute('style') || '')) {
+            throw new Error('the title is not clamped - a long one will push the detail out of view');
+        }
+        // The case that actually broke: hovering a DIFFERENT card must not
+        // close the pinned one. In a plot this dense, moving the pointer off a
+        // card nearly always crosses another, so keying "open" off a single
+        // focus node made pinning look broken.
+        const other = papers.find(n => n !== target && n.__data__.stance !== 'neutral');
+        await act(async () => {
+            other.dispatchEvent(new dom.window.MouseEvent('mouseover', { bubbles: true }));
+            await new Promise(r => setTimeout(r, 350));
+        });
+        const pinnedStill = parseFloat(target.querySelector('.node-paper-card')?.getAttribute('width'));
+        const otherW = parseFloat(other.querySelector('.node-paper-card')?.getAttribute('width'));
+        console.log(`PIN      compact ${compact?.toFixed(0)}px -> clicked ${openW?.toFixed(0)}px -> pointer left ${afterW?.toFixed(0)}px`);
+        console.log(`         hovering another card: pinned ${pinnedStill?.toFixed(0)}px, hovered ${otherW?.toFixed(0)}px (both should be open)`);
+        if (!(pinnedStill > compact + 20)) {
+            throw new Error(`the pinned card closed when another was hovered (${pinnedStill}px)`);
+        }
+        if (!(otherW > (other.__data__._compactW || 0) + 20)) {
+            throw new Error(`the hovered card did not open (${otherW}px)`);
+        }
+        console.log(`         open card reads: "${openText.replace(/\s+/g,' ').slice(0, 96)}"`);
+        if (!(openW > compact + 20)) throw new Error(`clicking did not open the card (${compact} -> ${openW})`);
+        if (!(afterW > compact + 20)) throw new Error(`the pinned card collapsed when the pointer left (${afterW}px, compact is ${compact}px)`);
+    }
+
+    // Tapping the background must clear the selection. This ran through a
+    // click handler, and d3-zoom preventDefaults the touch sequence, so on a
+    // phone no click arrived and a selected paper could not be dismissed at
+    // all. Pointer events are what a touch actually produces.
+    step = 'tapping the background deselects';
+    {
+        // Clear the hover first: a card under the pointer is legitimately open
+        // whatever the selection, so leaving it there tests nothing.
+        await act(async () => {
+            container.querySelectorAll('.d3-node').forEach(n =>
+                n.dispatchEvent(new dom.window.MouseEvent('mouseout', { bubbles: true })));
+            await new Promise(r => setTimeout(r, 200));
+        });
+        const svgEl = container.querySelector('svg');
+        const pointerEvt = (type, x, y) => {
+            const e = new dom.window.Event(type, { bubbles: true, cancelable: true });
+            Object.assign(e, { clientX: x, clientY: y, pointerId: 1, pointerType: 'touch' });
+            return e;
+        };
+        await act(async () => {
+            svgEl.dispatchEvent(pointerEvt('pointerdown', 20, 400));
+            svgEl.dispatchEvent(pointerEvt('pointerup', 21, 401));
+            await new Promise(r => setTimeout(r, 350));
+        });
+        const stillPinned = [...container.querySelectorAll('.d3-node')]
+            .filter(n => n.__data__ && n.__data__._paperOpen).length;
+        console.log(`DESELECT background tap -> ${stillPinned} papers still pinned`);
+        if (stillPinned) throw new Error('tapping the background did not clear the selection');
+    }
+
     step = 'display-options popover';
     if (container.querySelector('.axis-toggle-btn')) {
         throw new Error('toggles are in the DOM before the popover was opened');

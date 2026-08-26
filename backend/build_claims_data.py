@@ -87,6 +87,53 @@ def claim_rows(conn, claim_key):
     """, (claim_key,)).fetchall()
 
 
+def evidence_quality_of(ranks):
+    """
+    How good the evidence on a claim IS, on the 0-1 design ladder.
+
+    Weighted toward the best of it rather than the middle of it, because that is
+    how evidence is actually appraised: a question settled by two meta-analyses
+    is settled whatever else was published around it, and averaging those two
+    against sixty cross-sectional studies reports the state of the literature
+    instead of the state of the answer.
+
+    A plain mean put every claim in 0.27-0.80 and averaged 0.40, so the whole
+    map sat left of centre and the right-hand half of the axis went unused. The
+    maximum overcorrects the other way - 0.50-1.00 averaging 0.95, where one
+    meta-analysis owns the claim outright and nothing can be told apart.
+
+    So it is built from the top of the distribution and only checked against the
+    whole of it: half the weight on the mean of the best QUARTER, a third on the
+    mean of the best TENTH, and the remaining 15% on the overall mean. The best
+    tenth is what gives the strongest handful of papers a say of their own; the
+    best quarter is what stops any one of them owning the claim - on a claim
+    with 180 papers that quartile is 45 of them; and the overall mean is the
+    check that keeps fifty strong studies ahead of three strong and two hundred
+    weak.
+
+    The weights were chosen against the corpus rather than by taste. A plain
+    mean put all eighty claims in 0.27-0.80 averaging 0.40, so the map sat left
+    of centre with the right half of the axis unused. A plain maximum ran
+    0.50-1.00 averaging 0.95 - one meta-analysis owning the claim, nothing
+    distinguishable. Leaning harder still, on the top tenth alone, pushed thirty
+    of the eighty into the far-right fifth of the axis, which stops being a
+    ranking. This lands at 0.20-0.91 averaging 0.69, spread across the middle
+    and right without piling up at either end.
+    """
+    if not ranks:
+        return 0.0
+    ordered = sorted(ranks)
+    if len(ordered) < 4:
+        return sum(ordered) / len(ordered)
+
+    def top_mean(fraction):
+        top = ordered[int(len(ordered) * (1 - fraction)):] or ordered
+        return sum(top) / len(top)
+
+    overall = sum(ordered) / len(ordered)
+    return 0.5 * top_mean(0.25) + 0.35 * top_mean(0.10) + 0.15 * overall
+
+
 def summarise_claim(conn, claim_key, rows, openalex_count):
     cfg = CLAIMS[claim_key]
     topic = TOPICS[cfg["topic"]]
@@ -143,7 +190,8 @@ def summarise_claim(conn, claim_key, rows, openalex_count):
     if assessed:
         # Mean design rank, which is already 0..1 - so a claim's X is exactly the
         # mean of its papers' X, the same identity the evidence view relies on.
-        evidence_quality = sum(design.rank_of(r["study_type"]) for r in assessed) / len(assessed)
+        evidence_quality = evidence_quality_of(
+            [design.rank_of(r["study_type"]) for r in assessed])
     else:
         evidence_quality = 0.0
 
