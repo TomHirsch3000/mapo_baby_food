@@ -125,6 +125,35 @@ try {
     console.log(`CLAIMS   ${claims} nodes, title "${title}"`);
     if (!claims) throw new Error('CLAIMS view rendered no nodes (blank screen)');
 
+    // Where the camera actually ended up. The claims data is fetched, so the
+    // first render after navigating has no nodes - and that render used to
+    // spend the one-shot "view changed" fit, leaving the map parked wherever
+    // the topics screen had left it. Nothing about that is visible to a
+    // node-count check.
+    step = 'claims view is centred';
+    {
+        const fitted = container.querySelector('svg')?.getAttribute('data-fitted-view');
+        if (fitted !== 'CLAIMS') {
+            throw new Error(`CLAIMS never got its own fit (data-fitted-view="${fitted}") - `
+                          + `the one-shot was spent on the empty loading render`);
+        }
+        const gMain = container.querySelector('.g-main');
+        const t = gMain?.getAttribute('transform') || '';
+        const m = t.match(/translate\(([-\d.]+)[ ,]+([-\d.]+)\)\s*scale\(([-\d.]+)\)/);
+        if (!m) throw new Error(`no zoom transform on .g-main after entering CLAIMS (got "${t}")`);
+        const [tx, ty, k] = [parseFloat(m[1]), parseFloat(m[2]), parseFloat(m[3])];
+        const pts = [...container.querySelectorAll('.d3-node')]
+            .map(n => n.__data__).filter(d => d && Number.isFinite(d.x));
+        const cx = pts.reduce((a, d) => a + d.x, 0) / pts.length;
+        const cy = pts.reduce((a, d) => a + d.y, 0) / pts.length;
+        const sx = tx + k * cx, sy = ty + k * cy;
+        const offX = Math.abs(sx - 1440 / 2), offY = Math.abs(sy - 800 / 2);
+        console.log(`CENTRED  node centroid lands at ${sx.toFixed(0)},${sy.toFixed(0)} on a 1440x800 canvas (off by ${offX.toFixed(0)},${offY.toFixed(0)})`);
+        if (offX > 200 || offY > 200) {
+            throw new Error(`claims view is not centred: centroid off by ${offX.toFixed(0)},${offY.toFixed(0)}`);
+        }
+    }
+
     step = 'claims -> evidence';
     await clickFirstNode('CLAIMS');
     await settle(600);

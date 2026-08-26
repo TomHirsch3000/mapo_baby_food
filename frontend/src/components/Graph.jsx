@@ -1314,6 +1314,11 @@ export const Graph = ({
                         .translate(width / 2, topInset + usableH / 2)
                         .scale(scale)
                         .translate(-cx, -cy));
+                // Records that THIS view got its camera set, not merely that a
+                // camera exists. The failure being guarded is a fit that was
+                // skipped on an empty node list and never retried, which leaves
+                // a perfectly valid transform in place - the previous screen's.
+                svg.attr("data-fitted-view", viewMode);
             }
 
             allNodes.transition("flyin").duration(800).ease(d3.easeBackOut.overshoot(0.8))
@@ -1364,8 +1369,18 @@ export const Graph = ({
             firstDataRenderRef.current = false;
         }
 
-        prevViewMode.current = viewMode;
-        prevLayoutMode.current = layoutMode;
+        // Only count this view as rendered once it actually has nodes.
+        //
+        // Claim and evidence data is fetched, so the first render after a
+        // navigation has an empty node list. That render was still marking the
+        // view as seen, which spent the one-shot "view changed" fit on nothing:
+        // the extents were undefined, the fit was skipped, and by the time the
+        // data arrived the branch no longer fired. The map simply stayed
+        // wherever the previous screen's camera had left it.
+        if (currentNodes.length) {
+            prevViewMode.current = viewMode;
+            prevLayoutMode.current = layoutMode;
+        }
         simulationRef.current = sim;
 
     }, [nodes, edges, viewMode, layoutMode, groupingMode, activeGroup, selected, width, height, scales, evidenceXAxis, reading]);
