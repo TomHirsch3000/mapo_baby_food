@@ -61,3 +61,14 @@ Thumbs.db
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+
+# Labelling happens in Numbers, but gold_set.csv is the canonical artifact and
+# the only thing the harness reads. `bakeoff.py` exports the spreadsheet over
+# the CSV whenever the spreadsheet is newer, so committing both would mean a
+# 300 KB binary churning alongside the diff that actually shows what changed.
+gold/*.numbers
+
+# Bake-off run caches. A working artifact, like the live database: cheap to
+# regenerate (minutes, not the hours a full pass costs) and usually partial.
+# What survives a run is the SCORE, which is recorded in DECISIONS.md.
+gold/runs/

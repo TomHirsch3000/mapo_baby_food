@@ -2,13 +2,25 @@
 
 **Project:** mapo_baby_food
 **Repository:** TomHirsch3000/mapo_baby_food
-**Last updated:** 2026-08-23
+**Last updated:** 2026-08-29
 
 > This document states what the project is *for* and the rules it holds itself
 > to. Where it describes mechanism, it does so because the mechanism follows
 > from an intention — not as a record of what happens to be built. Anything
 > here that the code contradicts is a bug in the code or a decision that needs
 > revisiting in this document first.
+>
+> It is deliberately not a history. What was measured, what was chosen and why
+> lives in `DECISIONS.md`, which is append-only; what is still to do lives in
+> `BACKLOG.md`, which shrinks.
+>
+> **The test that keeps them apart: delete `DECISIONS.md`, and this document
+> must still be enough to rebuild the system correctly.** So every decision that
+> has *shipped* leaves a line or two here stating the rule — the evidence, the
+> numbers and the alternatives stay in the entry it cites. A decision that has
+> been taken but not built belongs in `BACKLOG.md`, not here: this document
+> changes when the code does, so that it never describes a system that does not
+> exist.
 
 ---
 
@@ -123,8 +135,20 @@ subject, not separate silos.
 
 Because tessellation forces uniform size, node size cannot encode anything
 here; counts go in the label instead. Each hexagon reports how many claims it
-holds and how many have been researched, so the shape of what is *missing* is
-visible from the landing page.
+holds and how much has been published on them.
+
+It also reported how many of those claims had been researched, until every claim
+carried a verdict and the counter read "7 claims · 7 researched" on all fourteen
+topics. A number that cannot vary is not information. It belongs back the moment
+coverage is partial again — a new topic, or a batch of claims added ahead of the
+papers that answer them — and the field is still exported for that. Principle 5
+is unchanged; what carries it on this screen for now is the gap between how much
+exists on a topic and how much is held.
+
+Topics are grouped into themes — eating, sleeping, playing and learning, screens
+— each tessellating on its own with a gap between them. A parent arrives already
+thinking "feeding" or "sleep", so the grid answers that before it answers
+anything else.
 
 Topics should cover the territory a parent recognises, not the territory
 academia is organised into. If a parent worries about it, it belongs.
@@ -147,6 +171,13 @@ The quadrants are the point:
 - **bottom-left** — doubtful: refuted, but only by weak ones
 - **centre** — genuinely contested
 
+**X is where a claim's *best* evidence sits, not its average.** A question
+settled by two meta-analyses is settled; averaging them against sixty
+cross-sectional studies reports the state of the literature rather than the state
+of the answer, and put every claim in the left-hand half of the axis. The
+aggregate is weighted to the strongest quarter and tenth of the papers, with the
+overall mean kept as a check — see `DECISIONS.md` D20.
+
 **Size deliberately tracks the literature, not our holdings.** A claim with
 thousands of papers published and none yet collected appears large and
 unassessed. That gap is the most honest thing the map can show about its own
@@ -164,20 +195,36 @@ The papers behind one claim, on the *same* axes, so nothing is relearned:
 |---|---|
 | **Y** | the paper's stance, scaled by the evaluator's confidence |
 | **X** | strength of the study design — switchable to publication year |
-| **Size** | citations |
+| **Size** | importance — how much this paper is worth reading first |
 | **Colour** | stance |
 
 Y is signed confidence rather than bare stance because a 95%-certain refutation
 and a hesitant 60% one are not the same claim on the reader's attention.
 
-**The claim descends with you.** It appears as a circle pinned at the
-coordinates it occupied one level up, so the reader can see the whole cloud of
-papers against the verdict drawn from them — and see when a handful of
-heavily-cited studies have pulled that verdict away from where the bulk of the
-papers sit.
+Size was citations alone. It now combines study design, citations relative to
+this claim, and the journal's own record — because "which of these should I read
+first" is the question a hundred papers actually raise, and no one of those three
+answers it: design alone ranks a tiny flawless trial over a definitive
+meta-analysis, citations alone reward age, and the journal says nothing about the
+specific paper. Each card carries its resulting position in that order. The
+journal term ranks and never weights a verdict; the reasoning for that separation
+is `DECISIONS.md` D15.
 
-Citation edges run in the direction influence flows: from the older, cited
-paper to the newer one citing it.
+**The claim descends with you.** It wears the same card it wore one level up —
+the same header, the same counts — so drilling in reads as one object moving
+rather than a new one appearing, and it is pinned at the coordinates it held
+there.
+
+Since those coordinates now favour a claim's strongest studies (§3.2), the
+anchor sits deliberately to the right of most of the cloud beneath it. That is
+the one place on the map where a position is *not* comparable to the positions
+around it, so it has to be said on the screen rather than inferred.
+
+Citation edges run in the direction influence flows: from the older, cited paper
+to the newer one citing it. Only the edges touching the context box are drawn: a
+paper-to-paper citation says one author read another and nothing about whether
+either is right or on topic, and at a hundred papers those edges are most of the
+ink.
 
 Papers that took no position on the claim are filtered out unless the claim's
 own literature treats them as load-bearing, judged by how often the other papers
@@ -228,6 +275,14 @@ confidence`. Quality dominates, impact is compressed so a single famous paper
 cannot swamp a field, and low-confidence judgements pull their punches. Papers
 that took no position never contribute to the verdict.
 
+**Study quality means the design, on a fixed hierarchy — never the model's own
+assessment of it.** The evaluator reports what a paper *is* (it reliably spots
+that a study randomised people); a canonical ladder decides what that is worth,
+from meta-analysis at the top down through cohorts to opinion and protocols at
+the bottom. The model's `strong`/`moderate`/`limited` label touches neither the
+axis nor the weighting, because it conflated design with sample size and ranked
+position papers above meta-analyses. See `DECISIONS.md` D16.
+
 ### Auditability
 
 The evaluator is asked to restate the paper's finding and commit to a direction
@@ -244,6 +299,23 @@ an identical abstract and an identical extracted finding, one will score
 "refutes" against *"screens should be avoided before 18–24 months"* and
 "supports" against *"screen exposure before 18–24 months is associated with
 worse developmental outcomes"*. This is why §5 exists.
+
+It is worse than §5 alone can fix. The same inversion fires whenever a paper
+reports the **complement** of the claim's exposure — "prone sleeping increases
+the risk" against a claim that "back sleeping reduces the risk" — and there,
+measured over the papers on `back_to_sleep` that take that form, the model
+handles it correctly **exactly half the time**: nine right, nine wrong. A step
+that is right 50% of the time is not a rule applied badly, it is no rule at all.
+
+The visible cost is that the most settled claims in the corpus read as the most
+contested ones. Among their best papers, `back_to_sleep` nets −0.02 and
+`vitamin_k_birth` −0.04 — two of the least disputed findings in paediatrics,
+rendered as open questions.
+
+This is the single largest threat to the map's credibility, and it constrains
+what may be built: any feature that renders a verdict — flagging contested
+claims, linking opposing papers, showing a paper's influence — would ship as a
+renderer for classification error until it is fixed. See `DECISIONS.md` D1–D5.
 
 ---
 
@@ -293,6 +365,18 @@ OpenAlex ──> claims.db ──> static JSON ──> browser
 Each stage is resumable and idempotent. None may require the previous one to be
 re-run to make progress.
 
+**A successful build is not evidence that anything renders.** The bundler does no
+temporal-dead-zone analysis and no cross-scope identifier resolution, and d3
+throws at run time on conditions it cannot see — an edge naming a node that was
+filtered out takes down the whole view rather than dropping one line. Three
+separate blank screens shipped past a clean `vite build` during development. So
+the gate before publishing is `npm run smoke`, which mounts the real app in
+jsdom and drives it — all three levels, the axis and reading controls, selection
+and deselection, back navigation, search, the two-tap touch path, the information
+panel, and a mobile viewport — failing on any error thrown from a render or an
+effect. It runs in CI ahead of the deploy step, and a build that has not passed
+it has not been shown to work.
+
 ### What lives in git
 
 The **built JSON**, carrying every verdict *and the reasoning behind it* — and a
@@ -337,6 +421,13 @@ should be settled before a full pass rather than during one.
 - **Light, calm, uncluttered.** The subject is anxious enough.
 - **Stance is vertical everywhere.** Up is more supported. This never changes.
 - **Nothing encoded twice.** Size, position and colour each carry one thing.
+- **Type never takes a palette colour directly.** The stance scale is chosen for
+  hue, and white on it fails AA at every point — 2.56:1 at the neutral midpoint,
+  where a quarter of the claims sit. Text takes a darkened derivative of the
+  colour instead, hue preserved. Where something must recede, what varies is the
+  contrast *target*, never the opacity: the weakest element still clears 4.5:1.
+  And colour is never the only channel — anything tinted by its verdict also
+  says what the verdict is. See `DECISIONS.md` D19.
 - **Legible zoomed out.** Axis orientation must be readable when the whole map
   is on screen, so cluster shape can be understood before any label is.
 - **Detail on demand.** The bottom panel shows whatever is under the cursor and
