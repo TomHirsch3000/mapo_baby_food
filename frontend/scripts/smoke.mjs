@@ -319,9 +319,40 @@ try {
             Object.assign(e, { clientX: x, clientY: y, pointerId: 1, pointerType: 'touch' });
             return e;
         };
+        // Dispatch on a CHILD of the svg, not the svg itself. A finger hit-tests
+        // to whatever is actually painted under it - an axis band, the context
+        // box rect, a hexagon - and only lands on the <svg> element where the
+        // canvas is genuinely bare. Firing on svgEl made `event.target` the svg
+        // by construction, so the old assertion held on a device where the
+        // feature did not work at all. jsdom has no layout and cannot hit-test,
+        // so the target has to be chosen deliberately.
+        const bare = container.querySelector('.g-axis-layer')
+                  || container.querySelector('.g-main')
+                  || svgEl;
+        if (bare === svgEl) throw new Error('no non-svg background element to tap - test is vacuous');
+
+        // The other direction first, while something is still pinned: a tap that
+        // lands INSIDE a node must not clear the selection. The node's own
+        // handler owns that gesture. Without this, "treat everything that is not
+        // the svg as background" would pass the test below while dismissing the
+        // selection on every tap, including on the card being read.
+        const insideNode = container.querySelector('.d3-node rect')
+                        || container.querySelector('.d3-node');
+        if (insideNode) {
+            await act(async () => {
+                insideNode.dispatchEvent(pointerEvt('pointerdown', 300, 300));
+                insideNode.dispatchEvent(pointerEvt('pointerup', 301, 301));
+                await new Promise(r => setTimeout(r, 250));
+            });
+            const heldOn = [...container.querySelectorAll('.d3-node')]
+                .filter(n => n.__data__ && n.__data__._paperOpen).length;
+            console.log(`DESELECT tap on a node -> ${heldOn} papers still pinned (should be 1)`);
+            if (!heldOn) throw new Error('tapping a node cleared the selection - only the background should');
+        }
+
         await act(async () => {
-            svgEl.dispatchEvent(pointerEvt('pointerdown', 20, 400));
-            svgEl.dispatchEvent(pointerEvt('pointerup', 21, 401));
+            bare.dispatchEvent(pointerEvt('pointerdown', 20, 400));
+            bare.dispatchEvent(pointerEvt('pointerup', 21, 401));
             await new Promise(r => setTimeout(r, 350));
         });
         const stillPinned = [...container.querySelectorAll('.d3-node')]

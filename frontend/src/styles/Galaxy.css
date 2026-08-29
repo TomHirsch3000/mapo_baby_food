@@ -20,6 +20,13 @@
     width: 100%;
     height: 100%;
     display: block;
+    /* d3-zoom owns panning and zooming here, so the browser must not also try.
+       Without this the browser claims an ambiguous touch as a possible scroll
+       and fires pointercancel instead of pointerup - and the tap-to-dismiss
+       handler correctly ignores a cancelled gesture, so the selection stuck.
+       Safe because the app shell is overflow:hidden and the page never
+       scrolls; there is no native gesture being taken away. */
+    touch-action: none;
 }
 
 .galaxy-header {

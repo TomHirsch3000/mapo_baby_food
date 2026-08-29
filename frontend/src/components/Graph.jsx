@@ -257,9 +257,20 @@ export const Graph = ({
         // dismissed at all. Pointer events fire for mouse and touch alike; the
         // movement threshold is what stops the end of a pan from counting as a
         // tap on the background.
+        //
+        // What counts as "the background" is everything that is not a node, NOT
+        // the <svg> element itself. A finger hit-tests to whatever is painted
+        // under it - an axis band, the dashed context-box rect, a hexagon - and
+        // reaches the bare <svg> only where the canvas happens to be empty. The
+        // check used to be `target.tagName === 'svg'`, so on a phone most taps
+        // landed on some piece of furniture and were ignored, which is why a
+        // selection could not be dismissed. The smoke test dispatched straight
+        // at the svg element and so asserted a case the device never produces.
+        const onNode = (el) => !!(el && el.closest && el.closest('.d3-node'));
+
         let tapStart = null;
         svg.on("pointerdown.unselect", (event) => {
-            tapStart = { x: event.clientX, y: event.clientY, target: event.target };
+            tapStart = { x: event.clientX, y: event.clientY, onNode: onNode(event.target) };
         });
         svg.on("pointerup.unselect pointercancel.unselect", (event) => {
             const start = tapStart;
@@ -267,8 +278,10 @@ export const Graph = ({
             if (!start || event.type === 'pointercancel') return;
             const moved = Math.hypot(event.clientX - start.x, event.clientY - start.y);
             if (moved > 8) return;                            // that was a pan
-            if (event.target !== start.target) return;
-            if (event.target.tagName === 'svg') onBackgroundClick();
+            // Either end of the gesture touching a node means it was not a tap
+            // on the background: a node's own click handler owns that.
+            if (start.onNode || onNode(event.target)) return;
+            onBackgroundClick();
         });
 
         if (simulationRef.current) simulationRef.current.stop();
