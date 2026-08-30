@@ -210,6 +210,26 @@ specific paper. Each card carries its resulting position in that order. The
 journal term ranks and never weights a verdict; the reasoning for that separation
 is `DECISIONS.md` D15.
 
+**A rank has to show its working.** Opened, a paper card names all three terms
+with the contribution each made and the most it could have made, ending at the
+importance score itself. The weights are stated on screen rather than only in
+the source, because they have never been calibrated — a number a reader can
+check is the only honest way to ship one that has not been earned yet
+(`DECISIONS.md` D23). The three contributions are computed once, in the export,
+and travel with the paper: the citation term is normalised across every paper
+held for the claim, and re-deriving it in the browser — which has already
+dropped most of the neutrals — would explain the ranking with different
+arithmetic from the one that produced it.
+
+X and this rank are **not the same quantity**, and a reader will find cases where
+they disagree: X is the design term alone, the rank is all three. On 29% of
+claims the top-ranked paper is not the rightmost one. That is the breakdown's
+main job — without it the disagreement looks like a fault.
+
+Context papers get no breakdown. They are ranked by the same arithmetic but sit
+outside the plot, so explaining a position they were never given would raise a
+question the screen cannot answer.
+
 **The claim descends with you.** It wears the same card it wore one level up —
 the same header, the same counts — so drilling in reads as one object moving
 rather than a new one appearing, and it is pinned at the coordinates it held

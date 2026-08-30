@@ -282,6 +282,11 @@ export const useClaimsData = (viewMode, activeTopic, activeClaim) => {
             rank: p.rank,
             rankTotal: p.rankTotal,
             importance: p.importance,
+            // The three contributions, so the open card can show its working.
+            // Computed in the backend across every paper held for the claim -
+            // the citation term is normalised over that full set, and the
+            // neutrals filtered out above are part of it.
+            importanceParts: p.importanceParts,
             journalName: p.journalName,
             journalImpact: p.journalImpact,
             journalHIndex: p.journalHIndex,

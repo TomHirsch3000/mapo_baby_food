@@ -356,6 +356,118 @@ first tool that could detect it.
 | Push contested claims leftward on X | **Rejected** | Collapses "unstudied" and "genuinely disputed" onto one coordinate. Whisker instead (item 6). |
 | Cut framework / context papers entirely | **Rejected** | Method provenance is what makes a body of evidence persuasive rather than dismissible. Kept, re-rendered (item 4). |
 | Keep the conservative/balanced/liberal toggle as a control | **Rejected** | 2.5% of pairs are `mixed`. Stated as a number on the claim instead (item 3). |
+| A recency term in the reading-order rank | **Rejected** | Asserts newer is better, which is false. The measured age skew is the citation term counting elapsed time — fix it there ([D24](DECISIONS.md#d24), item 15). |
+| Remove the size/rank redundancy on paper cards | **Rejected** | Same quantity in a coarse channel and a precise one: find by eye, confirm by number. The gap was the missing explanation, now on the open card ([D23](DECISIONS.md#d23)). |
+
+---
+
+## Found while explaining the ranking (2026-08-30)
+
+Out of putting the `importance_of` arithmetic on the open card
+([D23](DECISIONS.md#d23)). Item 14 is the one with a deadline: it is nearly free
+now and expensive later.
+
+### 14. Sample size is not extracted, and this is the only cheap moment to add it
+
+[D16](DECISIONS.md#d16) took sample size out of the quality signal because the
+model's `evidence_strength` label *conflated* it with design — "strong =
+meta-analysis or large RCT" — not because size does not matter. The consequence
+stands today: an n=30 RCT and an n=3,000 RCT are both `designRank` 0.88 and
+differ in the ranking only by however many citations each happened to collect.
+
+Extracted as its own field, `n` does not contaminate the design ladder and gives
+the rank a quality term that is about the study rather than about its reception.
+
+**The timing is the point.** This needs a value on every pair, so it needs a full
+pass — 14-25 hours. One is already planned (item 1f) and `prompts_v2.py` is
+being drafted now. Added to the draft it costs a few tokens per pair; added after
+the re-run it costs another re-run. Exactly the argument already made at the foot
+of `prompts_v2.py` for the age window.
+
+**Blocked by:** nothing, and it blocks 1f. Do it while the prompts are open.
+
+---
+
+### 15. The citation term counts elapsed time, so recent work sinks
+
+Median rank percentile by year: flat at ~0.44 through 2021, then 0.67 (2024),
+0.73 (2025), 0.83 (2026). A 2025 paper is in the bottom third of its claim by
+construction. Full measurement and the reasoning for fixing it *here* rather
+than with a recency term is [D24](DECISIONS.md#d24).
+
+Two candidates: age-normalise citations (percentile within publication year, or
+citations per year), or blend the journal metric in as a prior for papers under
+~2 years old, decaying as citations arrive — the one use of that metric
+[D15](DECISIONS.md#d15) did not reject.
+
+**Blocked by:** 16. Changing the citation term and the weights separately means
+measuring the same thing twice.
+
+---
+
+### 16. The importance weights have never been calibrated against anything
+
+`0.45 / 0.35 / 0.20` appear in `DECISIONS.md` only in passing, inside
+[D15](DECISIONS.md#d15)'s description of what the journal term does. They have
+been rendering as a result for weeks. They are now named
+(`W_DESIGN` / `W_CITATIONS` / `W_JOURNAL`) and printed on the open card, which
+makes the gap visible but does not close it.
+
+What would close it: a reading-order question put to the gold set's 60 pairs —
+*"which of these two should a parent read first?"* — and the weights fitted to
+the answers. That is a second labelling pass over pairs already in hand, not a
+new corpus.
+
+Two things worth measuring at the same time:
+
+- **The journal term is nearly inert.** It is the largest of the three terms on
+  2% of papers. It may be doing its work as a tie-breaker rather than a driver —
+  its median rank-correlation with the final order is +0.48 — or it may be
+  buying very little for the bias [D15](DECISIONS.md#d15) documents.
+- **The design ladder's lumpiness.** Twenty rungs, most papers on a handful of
+  them, so the 0.45 term ties far more often than its weight suggests and the
+  0.35 citation term does more of the ordering. Whether that is a weighting
+  problem or a laddering problem is measurable and currently unmeasured.
+
+**Blocked by:** nothing, but it wants the gold set extended.
+
+---
+
+### 17. Where relevance enters the arithmetic is undecided
+
+The screen pass ([D22](DECISIONS.md#d22)) will produce a relevance tier and a
+`relevance_reason` — population, outcome, dose, route, model organism. Item 3
+already plans per-reason discounts. What is not decided is *which* number they
+discount.
+
+**A fourth additive term is the wrong shape.** In a sum, a large weight rescues
+a bad relevance: an off-population meta-analysis in a strong journal keeps
+0.45 + 0.20 before relevance is even consulted, and still outranks a
+well-matched cohort. Relevance is closer to a gate or a multiplier —
+`importance x relevance_factor`, 1.0 for direct — than to an addend.
+
+It is also two questions, not one: whether relevance discounts the **verdict
+weight** (`paper_weight`, which moves the claim) or the **reading-order rank**
+(`importance_of`, which orders the cards), or both by different amounts. They
+are deliberately separate today ([D15](DECISIONS.md#d15)) and should stay so.
+
+**Blocked by:** 1e. There is nothing to discount until the screen pass fills the
+enum.
+
+---
+
+### 18. Context papers carry a rank they are never shown
+
+`rank_papers` ranks every paper held for the claim, neutrals included, and the
+rank travels into the JSON. But a context paper is drawn outside the plot with
+no X or Y, so its rank describes a position it was never given. The open card
+therefore shows the importance breakdown on decisive papers only, which is
+correct on screen and leaves the data model saying something the UI has to
+suppress.
+
+Either stop ranking neutrals, or rank them separately as "background worth
+reading". Small, and only worth doing when the screen pass changes what
+`neutral` means anyway (item 1e).
 
 ---
 

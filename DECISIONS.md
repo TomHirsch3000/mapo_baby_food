@@ -55,6 +55,8 @@ decision without that last field is dogma rather than a decision.
 | [D14](#d14) | 2026-08-29 | How a paper's influence on its claim is expressed | A leave-one-out delta, not a share of a total | decided |
 | [D21](#d21) | 2026-08-29 | What makes a paper evidence for a claim | Four tiers, judged on what was measured — never on whether it agrees | decided |
 | [D22](#d22) | 2026-08-29 | How the relevance and stance questions are put | Two calls; the cheap screen gates the expensive judgement | decided |
+| [D23](#d23) | 2026-08-30 | What a paper card shows, and what the map encodes twice | Rank stays the headline; the open card shows the arithmetic behind it | decided |
+| [D24](#d24) | 2026-08-30 | Whether a paper's age should affect its rank | No recency term — the age skew is the citation term measuring elapsed time | decided |
 
 ---
 
@@ -974,3 +976,132 @@ convention chosen against the shape of one corpus, and if the relevance tiering
 ([D9](#d9)) removes the weak tail that the mean was drowning in, the argument for
 weighting the top so heavily gets weaker — the top quartile of a *tiered* corpus
 is a different population from the top quartile of this one.
+
+
+---
+
+<a id="d23"></a>
+## D23 — What a paper card shows, and what the map encodes twice
+**2026-08-30 · decided**
+
+The evidence view draws a paper as a card that is compact until hovered or
+pinned. Compact, it carried a `#rank` and — only where the card was at least
+124px wide — a design label. Measured across all 80 claims, **12% of cards clear
+that width** (median 12% per claim), so on roughly seven cards in eight the
+entire content was a rank number, with no way to find out what produced it.
+
+**Audit of what the six channels encode.** Asked directly, rather than one
+channel at a time as they were added:
+
+| channel | encodes |
+|---|---|
+| X position | design rank |
+| fill / stroke opacity | design rank |
+| size | importance |
+| `#n` text | importance |
+| colour | stance |
+| Y position | stance x confidence |
+
+Two quantities are drawn twice and two are never drawn. **Citations and the
+journal metric together carry 55% of the weight in `importance_of` and do most
+of the actual ordering** — median rank-correlation with the final order is
+citations +0.62, journal +0.48, design +0.45 — and neither has a channel.
+Publication year has none unless the X switch is thrown.
+
+The design ladder is lumpy, which is why the weaker-weighted term out-orders it:
+twenty rungs with most papers piled on a handful, so design produces large ties
+that citations then break.
+
+**The rank and the X position are different quantities, and diverge visibly.**
+X is `designRank` alone; the rank is all three terms. So:
+
+- on **29%** of claims the `#1` paper is *not* the rightmost on the axis;
+- on the median claim, **19% of paper pairs** have the better-ranked one sitting
+  further left.
+
+On `peanut_intro_early` the top three are #1 at x=0.88, #2 at x=0.88, #3 at
+x=1.00 — the meta-analysis is furthest right and ranks third. A reader who has
+learned "right is better" gets a contradiction the screen never resolves.
+
+**Decided: keep the setup, explain it on the open card.** The redundancy is not
+a fault to remove — size and rank are the same quantity in a coarse channel and
+a precise one, which is how a reader finds the important papers by eye and then
+confirms by number. What was missing was any account of the arithmetic. The open
+card now shows the three terms, each with the contribution it made and the most
+it could have made:
+
+```
+WHY IT RANKS #1 OF 151
+▬▬▬  study design   meta-analysis   0.45 / 0.45
+▬▬   citations      1,272           0.27 / 0.35
+▬▬   journal        impact 7.33     0.14 / 0.20
+                          importance 0.86 / 1.00
+```
+
+The three contributions are computed in the backend and exported as
+`importanceParts`, not recomputed on screen: the citation term is normalised
+across every paper held for the claim, and the frontend has already dropped most
+of the neutrals by the time it draws anything — a second implementation would
+quietly disagree with the ranking it is explaining. Design, journal and citations
+were removed from the card's bare detail row at the same time, because stating
+them twice within 20px teaches nothing the second time.
+
+Context papers are excluded: they are ranked by the same arithmetic but never
+placed in the plot, so explaining a position they were not given raises a
+question the screen cannot answer.
+
+**The weights are on screen because they have never been calibrated.** `0.45 /
+0.35 / 0.20` appear nowhere in this file as a decision — [D15](#d15) mentions
+them only in passing while describing what the journal term does. They are a
+starting point that has been rendering as a result for weeks. Printing them
+where a reader can see them makes that checkable by someone who does not read
+the source, and is the cheapest available pressure to go and calibrate them.
+`W_DESIGN` / `W_CITATIONS` / `W_JOURNAL` in `build_claims_data.py` now name them
+so there is one place to change.
+
+**What would change our mind:** the gold set. It ranks nothing today — it labels
+stance — but a "which of these should I read first" question put to the same 60
+pairs would turn the weights from a convention into a measurement. Until that
+exists, any argument about 0.45 against 0.40 is taste.
+
+---
+
+<a id="d24"></a>
+## D24 — Whether a paper's age should affect its rank
+**2026-08-30 · decided**
+
+**No recency term.** A recency bonus asserts that newer is better, which is
+false for this corpus — the 1998 landmark trial is often exactly the paper a
+reader should open first, and `peanut_intro_early` is ranked correctly precisely
+because LEAP (2015) outranks everything published since.
+
+**But there is a real age skew, and it is not about recency.** Median rank
+percentile by publication year, over the 7,768 judged pairs (0.00 = top of the
+claim's list):
+
+| 2014 | 2016 | 2018 | 2020 | 2022 | 2023 | 2024 | 2025 | 2026 |
+|---|---|---|---|---|---|---|---|---|
+| 0.38 | 0.41 | 0.43 | 0.44 | 0.55 | 0.57 | **0.67** | **0.73** | **0.83** |
+
+Flat at 0.44 or below for everything up to 2021, then it falls off a cliff. A
+2025 paper sits in the bottom third of its claim **by construction**. That is
+not a judgement about new work; it is `log1p(citations)` measuring elapsed time,
+exactly as [D15](#d15) predicted when it recorded that 54% of 2025 papers and
+93% of 2026 papers have under five citations.
+
+So the fix belongs in the citation term, not in a new one. Two candidates, both
+removing the skew without claiming new is good:
+
+1. **Age-normalise the citations** — percentile within publication year, or
+   citations per year since publication.
+2. **[D15](#d15)'s own proposal** — blend the journal metric in as a prior for
+   papers under about two years old, decaying to nothing as real citations
+   arrive. This is the one use of the journal metric D15 did not reject.
+
+Neither is chosen here; both are in `BACKLOG.md` behind calibrating the weights,
+since changing the citation term and the weights independently means measuring
+the same thing twice.
+
+**What would change our mind:** evidence that readers want the newest work
+first regardless of uptake — which would be an argument for a *year filter*,
+still not for a recency term in a reading-order rank.
