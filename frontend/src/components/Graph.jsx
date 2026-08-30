@@ -81,6 +81,85 @@ const designLabel = (d) => {
 };
 
 /**
+ * Why a paper ranks where it does, spelled out on the open card.
+ *
+ * The rank is the one thing every card carries, and until now a reader had no
+ * way to find out what produced it. The three terms are shown as they are
+ * combined - each against the most it could contribute - so the answer to "why
+ * is this #1" is arithmetic on the page rather than something to take on trust.
+ *
+ * The weights mirror W_DESIGN / W_CITATIONS / W_JOURNAL in
+ * backend/build_claims_data.py. They are duplicated because the card prints
+ * them as labels; the contributions themselves are NOT recomputed here - they
+ * arrive as importanceParts, because the citation term is normalised across
+ * every paper held for the claim and the frontend has already dropped most of
+ * the neutrals by the time it draws anything.
+ *
+ * They are also uncalibrated - see DECISIONS D23. Stating them on screen is
+ * what makes that checkable by someone who does not read the source.
+ */
+const IMPORTANCE_WEIGHTS = { design: 0.45, citations: 0.35, journal: 0.20 };
+
+const importanceRows = (d) => {
+    const parts = d.importanceParts;
+    if (!parts) return null;
+    const cites = d.citationCount || 0;
+    const impact = d.journalImpact;
+    return [
+        { key: 'design', label: 'study design', value: designLabel(d) },
+        { key: 'citations', label: 'citations', value: cites.toLocaleString() },
+        {
+            key: 'journal', label: 'journal',
+            // A missing metric floors this term at zero, indistinguishable from
+            // an obscure venue - the BMJ is the largest case. Saying "not
+            // recorded" stops a reader reading a data gap as a judgement.
+            value: impact == null ? 'not recorded' : `impact ${impact}`,
+        },
+    ];
+};
+
+/**
+ * The breakdown block. Bars are drawn against each term's own weight, so a
+ * full bar means "this paper took everything this term had to give" rather
+ * than an arbitrary fraction of the total.
+ */
+const importanceBreakdown = (d) => {
+    const rows = importanceRows(d);
+    if (!rows) return '';
+    const bar = (got, max) => {
+        const pct = Math.max(0, Math.min(1, max ? got / max : 0)) * 100;
+        return `<span style="display:inline-block;width:34px;height:4px;border-radius:2px;` +
+               `background:#e2e8f0;vertical-align:middle;overflow:hidden;">` +
+               `<span style="display:block;width:${pct.toFixed(0)}%;height:100%;` +
+               `background:#4f46e5;border-radius:2px;"></span></span>`;
+    };
+    const line = ({ key, label, value }) => {
+        const got = d.importanceParts[key] || 0;
+        const max = IMPORTANCE_WEIGHTS[key];
+        return `<div style="display:flex;align-items:center;gap:6px;">` +
+               `${bar(got, max)}` +
+               `<span style="color:#64748b;flex:0 0 auto;">${label}</span>` +
+               `<span style="color:#1e293b;font-weight:650;flex:1 1 auto;` +
+               `overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${value}</span>` +
+               `<span style="color:#94a3b8;flex:0 0 auto;font-variant-numeric:tabular-nums;">` +
+               `${got.toFixed(2)}<span style="opacity:0.55;">/${max.toFixed(2)}</span></span>` +
+               `</div>`;
+    };
+    const total = (d.importance != null ? d.importance : 0).toFixed(2);
+    return `<div style="margin-top:7px;padding-top:6px;` +
+           `border-top:1px solid rgba(0,0,0,0.07);font-size:10px;line-height:1.5;` +
+           `display:flex;flex-direction:column;gap:3px;text-align:left;">` +
+           `<div style="color:#64748b;letter-spacing:0.04em;text-transform:uppercase;` +
+           `font-size:9px;font-weight:700;">why it ranks #${d.rank}` +
+           `${d.rankTotal ? ` of ${d.rankTotal}` : ''}</div>` +
+           rows.map(line).join('') +
+           `<div style="display:flex;justify-content:flex-end;gap:6px;color:#4f46e5;` +
+           `font-weight:750;font-variant-numeric:tabular-nums;">` +
+           `<span>importance ${total}</span><span style="opacity:0.55;">/1.00</span></div>` +
+           `</div>`;
+};
+
+/**
  * How solidly a paper is drawn, from how good its design is.
  *
  * Bound to designRank, NOT to the x coordinate. In strength mode the two are
@@ -1131,6 +1210,11 @@ export const Graph = ({
                 // duplicated the design while disagreeing with it: only 16% of
                 // what it calls strong is a meta-analysis or RCT, and 23% are
                 // designs its own instructions call limited.
+                // Context papers are ranked by the same arithmetic but are
+                // excluded from the plot, so explaining a position they were
+                // never given would raise a question the screen cannot answer.
+                const showBreakdown = !isNeutral && !!d.importanceParts;
+
                 const detail = [];
                 if (isNeutral) {
                     detail.push(`<span style="color:#64748b;">context only</span>`);
@@ -1139,11 +1223,18 @@ export const Graph = ({
                     detail.push(`<span style="color:${readableOnWhiteText(cardColor)};` +
                                 `font-weight:750;">${conf}${VERDICT_WORD[d.stance] || 'untested'}</span>`);
                 }
-                detail.push(`<span style="color:#475569;">${designLabel(d)}</span>`);
-                if (d.journalImpact != null) {
-                    detail.push(`<span style="color:#475569;">impact <strong>${d.journalImpact}</strong></span>`);
+                // Design, journal and citations are the three terms the
+                // breakdown below names WITH the contribution each made, so
+                // repeating them bare here says everything twice and teaches
+                // nothing the second time. They stay on a context paper, which
+                // gets no breakdown.
+                if (!showBreakdown) {
+                    detail.push(`<span style="color:#475569;">${designLabel(d)}</span>`);
+                    if (d.journalImpact != null) {
+                        detail.push(`<span style="color:#475569;">impact <strong>${d.journalImpact}</strong></span>`);
+                    }
+                    detail.push(`<span style="color:#94a3b8;">${d.citationCount || 0} cites</span>`);
                 }
-                detail.push(`<span style="color:#94a3b8;">${d.citationCount || 0} cites</span>`);
 
                 el.select(".node-paper-title")
                     .style("padding", "0 4px")
@@ -1162,11 +1253,15 @@ export const Graph = ({
                         `border-top:1px solid rgba(0,0,0,0.07);font-size:10.5px;` +
                         `line-height:1.5;display:flex;flex-wrap:wrap;gap:0 8px;` +
                         `justify-content:center;flex:0 0 auto;">` +
-                        (d.rank != null
+                        // The rank chip stays only where the breakdown below
+                        // is not drawn. Otherwise the card states the same
+                        // number twice, 20px apart.
+                        (d.rank != null && !showBreakdown
                             ? `<span style="color:#4f46e5;font-weight:800;">#${d.rank}` +
                               `${d.rankTotal ? `/${d.rankTotal}` : ''}</span>`
                             : '') +
-                        detail.join('') + `</div>`
+                        detail.join('') + `</div>` +
+                        (showBreakdown ? importanceBreakdown(d) : '')
                     );
             }
         });

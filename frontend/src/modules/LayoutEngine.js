@@ -502,7 +502,11 @@ export class LayoutEngine {
     //   X = evidence strength     weak studies left, strong right
     //                             (toggleable to publication year)
     //
-    // Size still encodes citations, so nothing is doubled up.
+    // Size encodes importance - design, citations within the claim, and the
+    // journal - which is the same quantity the #rank on each card names. That
+    // duplication is deliberate: the coarse channel finds the papers worth
+    // reading by eye, the precise one confirms which is which. See DECISIONS
+    // D23 for the audit of what every channel on this screen carries.
     //
     // Y is signed confidence rather than bare stance: a 95%-sure refutation
     // belongs at the bottom edge, a hesitant 60% one belongs near the middle.

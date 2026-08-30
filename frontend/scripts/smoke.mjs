@@ -266,13 +266,21 @@ try {
         const has = (re, what) => { if (!re.test(openText)) throw new Error(`open card is missing ${what}: "${openText.slice(0,90)}"`); };
         has(/#\d+/, 'its rank');
         has(/\d+%\s*(for|against|mixed)|context only/, 'the verdict');
-        has(/\d+ cites/, 'a citation count');
+        // On a decisive paper the count moved into the breakdown, where it
+        // carries the contribution it made; a context paper keeps the bare row.
+        has(/\d+ cites|citations[\s\d,]+/, 'a citation count');
         // Structural guard, not a size one: the detail row must be a sibling of
         // the title with its own box, so a title that overruns clamps instead
         // of pushing the detail out of a box that hides its overflow.
         const titleDiv = target.querySelector('.node-paper-title');
         const kids = titleDiv ? [...titleDiv.children] : [];
-        if (kids.length !== 2) throw new Error(`open card should be title + detail, found ${kids.length} blocks`);
+        // Title + detail, plus the importance breakdown on anything that is
+        // actually evidence. Context papers are ranked by the same arithmetic
+        // but are excluded from the plot, so they do not get the block.
+        const wantBlocks = target.__data__.stance === 'neutral' ? 2 : 3;
+        if (kids.length !== wantBlocks) {
+            throw new Error(`open card should be ${wantBlocks} blocks, found ${kids.length}`);
+        }
         if (!/line-clamp/.test(kids[0].getAttribute('style') || '')) {
             throw new Error('the title is not clamped - a long one will push the detail out of view');
         }
@@ -298,6 +306,47 @@ try {
         console.log(`         open card reads: "${openText.replace(/\s+/g,' ').slice(0, 96)}"`);
         if (!(openW > compact + 20)) throw new Error(`clicking did not open the card (${compact} -> ${openW})`);
         if (!(afterW > compact + 20)) throw new Error(`the pinned card collapsed when the pointer left (${afterW}px, compact is ${compact}px)`);
+    }
+
+    // The rank is the one number every compact card carries, so the open card
+    // has to say where it came from. This asserts the arithmetic is ON SCREEN -
+    // three named terms, each with its contribution - rather than a claim that
+    // a formula exists somewhere.
+    step = 'an open paper shows why it ranks where it does';
+    {
+        const decisive = [...container.querySelectorAll('.d3-node')]
+            .filter(n => n.__data__ && n.__data__.type === 'paper'
+                      && n.__data__.stance !== 'neutral' && n.__data__.importanceParts);
+        if (!decisive.length) throw new Error('no decisive paper carries importanceParts');
+        const target = decisive[0];
+        await act(async () => {
+            target.dispatchEvent(new dom.window.MouseEvent('mouseover', { bubbles: true }));
+            await new Promise(r => setTimeout(r, 300));
+        });
+        const text = (target.querySelector('.node-paper-title')?.textContent || '')
+            .replace(/\s+/g, ' ');
+        const need = (re, what) => {
+            if (!re.test(text)) throw new Error(`the breakdown is missing ${what}: "${text.slice(0, 140)}"`);
+        };
+        need(/why it ranks #\d+ of \d+/, 'its heading');
+        need(/study design/, 'the design term');
+        need(/citations/, 'the citation term');
+        need(/journal/, 'the journal term');
+        need(/importance \d\.\d\d/, 'the total');
+        // The three parts must add up to the total the card prints, or the
+        // page is showing working that does not reach its own answer.
+        const d = target.__data__;
+        const sum = d.importanceParts.design + d.importanceParts.citations + d.importanceParts.journal;
+        if (Math.abs(sum - d.importance) > 0.001) {
+            throw new Error(`parts sum to ${sum.toFixed(4)} but importance is ${d.importance}`);
+        }
+        console.log(`FORMULA  #${d.rank}/${d.rankTotal}: design ${d.importanceParts.design} + `
+                    + `cites ${d.importanceParts.citations} + journal ${d.importanceParts.journal} `
+                    + `= ${d.importance}`);
+        await act(async () => {
+            target.dispatchEvent(new dom.window.MouseEvent('mouseout', { bubbles: true }));
+            await new Promise(r => setTimeout(r, 300));
+        });
     }
 
     // Tapping the background must clear the selection. This ran through a

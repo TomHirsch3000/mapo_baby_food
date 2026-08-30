@@ -235,10 +235,21 @@ def summarise_claim(conn, claim_key, rows, openalex_count):
 # exceptional journal.
 JOURNAL_CEILING = 20.0
 
+# The three weights, named because the card now shows them to a reader. They
+# have never been calibrated against anything - see DECISIONS D23 - so they are
+# a starting point held in one place, not a result.
+W_DESIGN = 0.45
+W_CITATIONS = 0.35
+W_JOURNAL = 0.20
+
 
 def importance_of(row, max_log_cites):
     """
-    How much a paper should count as evidence, 0..1.
+    How much a paper should count as evidence: (total 0..1, contributions).
+
+    The contributions are returned rather than recovered later because the card
+    shows them, and a second implementation of the same arithmetic is a second
+    thing that can disagree with the ranking.
 
     Three things, because any one alone is misleading. Design alone would rank a
     tiny flawless RCT above a definitive meta-analysis. Citations alone reward
@@ -260,8 +271,19 @@ def importance_of(row, max_log_cites):
     journal_norm = (math.log1p(min(impact or 0.0, JOURNAL_CEILING))
                     / math.log1p(JOURNAL_CEILING))
 
-    return max(0.0, min(1.0,
-        0.45 * design_rank + 0.35 * cites_norm + 0.20 * journal_norm))
+    design_part = W_DESIGN * design_rank
+    cites_part = W_CITATIONS * cites_norm
+    journal_part = W_JOURNAL * journal_norm
+
+    # Total from the unrounded parts. Summing the rounded ones instead would
+    # move it by up to 1.5e-4, which is enough to swap two papers whose scores
+    # are otherwise identical - a rendering detail silently reordering a rank.
+    total = max(0.0, min(1.0, design_part + cites_part + journal_part))
+    return total, {
+        "design": round(design_part, 4),
+        "citations": round(cites_part, 4),
+        "journal": round(journal_part, 4),
+    }
 
 
 def rank_papers(papers):
@@ -332,7 +354,14 @@ def export_evidence(conn, claim_key, summary, rows, out_dir):
     # whole set is in hand rather than per row.
     max_log_cites = max((math.log1p(r["cited_by_count"] or 0) for r in rows), default=0.0)
     for node, row in zip(papers, rows):
-        node["importance"] = round(importance_of(row, max_log_cites), 4)
+        total, parts = importance_of(row, max_log_cites)
+        node["importance"] = round(total, 4)
+        # The three contributions travel with the paper so the open card can
+        # show WHY it ranks where it does. Recomputing them in the frontend
+        # would need max_log_cites over every paper held for the claim, and the
+        # frontend has already dropped most of the neutrals by then - so it
+        # would quietly disagree with the ranking it is explaining.
+        node["importanceParts"] = parts
     rank_papers(papers)
 
     edges = []
