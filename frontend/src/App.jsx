@@ -71,6 +71,7 @@ export default function App() {
     setActiveTopic(view === 'TOPICS' ? null : (st?.topic ?? null));
     setActiveClaim(view === 'EVIDENCE' ? (st?.claim ?? null) : null);
     setSelected(null);
+    setHovered(null);
   };
 
   useEffect(() => {
@@ -93,6 +94,7 @@ export default function App() {
     setActiveClaim(null);
     setViewMode('CLAIMS');
     setSelected(null);
+    setHovered(null);
     window.history.pushState({ view: 'CLAIMS', topic: topicId }, '');
   };
 
@@ -102,6 +104,7 @@ export default function App() {
     setActiveClaim(claimId);
     setViewMode('EVIDENCE');
     setSelected(null);
+    setHovered(null);
     window.history.pushState({ view: 'EVIDENCE', topic: topicId, claim: claimId }, '');
   };
 
@@ -134,8 +137,14 @@ export default function App() {
   const handleBackToTopics = () => window.history.back();
   const handleBackToClaims = () => window.history.back();
 
+  // Dismissing means dismissing BOTH halves of the focus. The Graph focuses on
+  // `hovered || selected`, so clearing only the selection leaves a stale hover
+  // holding the card open and the rest of the map dimmed - which is the
+  // deselect appearing not to work at all. A mouse has already left the node by
+  // the time it clicks the background, so this costs a pointer user nothing.
   const handleBackgroundClick = () => {
-    if (selected) setSelected(null);
+    setSelected(null);
+    setHovered(null);
   };
 
   // Search jumps straight to a claim's evidence.

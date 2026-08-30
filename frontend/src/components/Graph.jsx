@@ -182,6 +182,29 @@ const STANCE_DIVERGING = d3.scaleLinear()
     .interpolate(d3.interpolateRgb)
     .clamp(true);
 
+/**
+ * Hover, but only from something that can actually hover.
+ *
+ * A touch screen has no hover state, yet a tap still emits the compatibility
+ * mouse events - so `mouseover` fired on the tapped node and set `hovered`.
+ * Nothing ever took it away again: the matching `mouseout` needs the pointer to
+ * MOVE OFF the node, and a finger that has been lifted never moves. So a tapped
+ * node stayed "hovered" for the rest of the session.
+ *
+ * That is why tapping the background could not dismiss a selection. The tap
+ * handler worked and cleared `selected` correctly, but focus is
+ * `hovered || selected`, and the stale hover kept the card open and every other
+ * node dimmed - which looks exactly like the deselect never happening. It also
+ * carried the last node from one screen to the next, so the footer on a fresh
+ * view described a node the reader had left behind.
+ *
+ * Pointer events carry which device produced them, so a touch is simply not a
+ * hover. Pen still is: a stylus can genuinely hover on the devices that have
+ * one. pointerover/pointerout are used rather than enter/leave to keep exactly
+ * the mouse semantics this replaces.
+ */
+const hoverFromTouch = (event) => event && event.pointerType === 'touch';
+
 export const Graph = ({
     nodes,
     edges,
@@ -729,8 +752,8 @@ export const Graph = ({
             .attr("cursor", "pointer")
             .on("click", (e, d) => { e.stopPropagation(); onNodeClick(d); })
             .on("dblclick", (e, d) => { e.stopPropagation(); if (onNodeDoubleClick) onNodeDoubleClick(d); })
-            .on("mouseover", (e, d) => onNodeHover(d))
-            .on("mouseout", (e, d) => onNodeHover(null));
+            .on("pointerover", (e, d) => { if (hoverFromTouch(e)) return; onNodeHover(d); })
+            .on("pointerout", (e) => { if (hoverFromTouch(e)) return; onNodeHover(null); });
 
         nodeEnter.each(function (d) {
             const el = d3.select(this);
@@ -818,8 +841,8 @@ export const Graph = ({
         allNodes
             .on("click", (e, d) => { e.stopPropagation(); onNodeClick(d); })
             .on("dblclick", (e, d) => { e.stopPropagation(); if (onNodeDoubleClick) onNodeDoubleClick(d); })
-            .on("mouseover", (e, d) => onNodeHover(d))
-            .on("mouseout", () => onNodeHover(null));
+            .on("pointerover", (e, d) => { if (hoverFromTouch(e)) return; onNodeHover(d); })
+            .on("pointerout", (e) => { if (hoverFromTouch(e)) return; onNodeHover(null); });
 
         allNodes.attr("transform", d => `translate(${d.x}, ${d.y})`);
 

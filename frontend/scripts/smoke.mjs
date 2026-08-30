@@ -83,16 +83,29 @@ const settle = async (ms = 120) => {
     await act(async () => { await new Promise(r => setTimeout(r, ms)); });
 };
 
+// Hover and dismissal both run on POINTER events now, because a pointer event
+// is the only one that says what produced it. jsdom ships no PointerEvent
+// constructor, so this is a plain Event with the fields the handlers read
+// bolted on - which is all d3 ever looks at.
+//
+// `pointerType` is the whole point of the helper: 'mouse' is a hover, 'touch'
+// is not. Dispatching a MouseEvent instead would test neither.
+const pointerEvent = (type, { pointerType = 'mouse', x = 0, y = 0 } = {}) => {
+    const e = new dom.window.Event(type, { bubbles: true, cancelable: true });
+    Object.assign(e, { clientX: x, clientY: y, pointerId: 1, pointerType });
+    return e;
+};
+
 const clickFirstNode = async (label) => {
     const nodes = container.querySelectorAll('.d3-node');
     if (!nodes.length) throw new Error(`${label}: no .d3-node rendered`);
     // Pick the node with the most children — a real topic/claim, not a stray.
     const target = nodes[0];
     await act(async () => {
-        // mouseover first, and never a mouseout: that is what a real click is,
+        // The hover first, and never withdrawn: that is what a real click is,
         // and it is what left a stale `hovered` pointing at a node the next
         // screen has never heard of.
-        target.dispatchEvent(new dom.window.MouseEvent('mouseover', { bubbles: true }));
+        target.dispatchEvent(pointerEvent('pointerover'));
         target.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true, cancelable: true }));
         await new Promise(r => setTimeout(r, 200));
     });
@@ -249,14 +262,14 @@ try {
         const compact = target.__data__._compactW;
 
         await act(async () => {
-            target.dispatchEvent(new dom.window.MouseEvent('mouseover', { bubbles: true }));
+            target.dispatchEvent(pointerEvent('pointerover'));
             target.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true, cancelable: true }));
             await new Promise(r => setTimeout(r, 300));
         });
         const openW = parseFloat(target.querySelector('.node-paper-card')?.getAttribute('width'));
 
         await act(async () => {
-            target.dispatchEvent(new dom.window.MouseEvent('mouseout', { bubbles: true }));
+            target.dispatchEvent(pointerEvent('pointerout'));
             await new Promise(r => setTimeout(r, 400));
         });
         const afterW = parseFloat(target.querySelector('.node-paper-card')?.getAttribute('width'));
@@ -290,7 +303,7 @@ try {
         // focus node made pinning look broken.
         const other = papers.find(n => n !== target && n.__data__.stance !== 'neutral');
         await act(async () => {
-            other.dispatchEvent(new dom.window.MouseEvent('mouseover', { bubbles: true }));
+            other.dispatchEvent(pointerEvent('pointerover'));
             await new Promise(r => setTimeout(r, 350));
         });
         const pinnedStill = parseFloat(target.querySelector('.node-paper-card')?.getAttribute('width'));
@@ -320,7 +333,7 @@ try {
         if (!decisive.length) throw new Error('no decisive paper carries importanceParts');
         const target = decisive[0];
         await act(async () => {
-            target.dispatchEvent(new dom.window.MouseEvent('mouseover', { bubbles: true }));
+            target.dispatchEvent(pointerEvent('pointerover'));
             await new Promise(r => setTimeout(r, 300));
         });
         const text = (target.querySelector('.node-paper-title')?.textContent || '')
@@ -344,70 +357,105 @@ try {
                     + `cites ${d.importanceParts.citations} + journal ${d.importanceParts.journal} `
                     + `= ${d.importance}`);
         await act(async () => {
-            target.dispatchEvent(new dom.window.MouseEvent('mouseout', { bubbles: true }));
+            target.dispatchEvent(pointerEvent('pointerout'));
             await new Promise(r => setTimeout(r, 300));
         });
     }
 
-    // Tapping the background must clear the selection. This ran through a
-    // click handler, and d3-zoom preventDefaults the touch sequence, so on a
-    // phone no click arrived and a selected paper could not be dismissed at
-    // all. Pointer events are what a touch actually produces.
+    // Tapping the background must clear the selection - the card shrinks back
+    // and every other node comes out of the grey.
+    //
+    // This is the third attempt at the same bug, and the first two were fixed
+    // in the wrong place. Both went at the tap handler, which was already
+    // firing and already clearing `selected`. What survived was `hovered`: a
+    // phone has no hover, but a tap still emits the compatibility mouse events,
+    // so `mouseover` set it and the matching `mouseout` - which needs a pointer
+    // to move off the node - never came. Focus is `hovered || selected`, so the
+    // stale hover held the card open and everything else dim, and the
+    // dismissal looked like it had not happened.
+    //
+    // The test could not see it because it dispatched a mouseout across every
+    // node first, "to clear the hover" - the one thing a finger cannot do. It
+    // therefore asserted a state the device never reaches. So the tap below is
+    // the full sequence a phone really produces, mouse compatibility events
+    // included, and nothing is cleared by hand.
     step = 'tapping the background deselects';
     {
-        // Clear the hover first: a card under the pointer is legitimately open
-        // whatever the selection, so leaving it there tests nothing.
+        const svgEl = container.querySelector('svg');
+        const pointerEvt = (type, x, y) =>
+            pointerEvent(type, { pointerType: 'touch', x, y });
+
+        // Withdraw the MOUSE hover the previous steps left behind. A real
+        // pointer does this by moving; a finger has no way to, which is exactly
+        // what the rest of this step is about.
         await act(async () => {
             container.querySelectorAll('.d3-node').forEach(n =>
-                n.dispatchEvent(new dom.window.MouseEvent('mouseout', { bubbles: true })));
+                n.dispatchEvent(pointerEvent('pointerout')));
             await new Promise(r => setTimeout(r, 200));
         });
-        const svgEl = container.querySelector('svg');
-        const pointerEvt = (type, x, y) => {
-            const e = new dom.window.Event(type, { bubbles: true, cancelable: true });
-            Object.assign(e, { clientX: x, clientY: y, pointerId: 1, pointerType: 'touch' });
-            return e;
+
+        // A tap, in full. The browser sends the pointer events AND, for
+        // backwards compatibility, a mouseover and a click - and no mouseout,
+        // because nothing moved. That trailing mouseover is the whole bug.
+        const tap = async (el, x, y) => {
+            await act(async () => {
+                el.dispatchEvent(pointerEvt('pointerdown', x, y));
+                el.dispatchEvent(pointerEvt('pointerover', x, y));
+                el.dispatchEvent(pointerEvt('pointerup', x + 1, y + 1));
+                el.dispatchEvent(new dom.window.MouseEvent('mouseover', { bubbles: true }));
+                el.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true, cancelable: true }));
+                await new Promise(r => setTimeout(r, 350));
+            });
         };
-        // Dispatch on a CHILD of the svg, not the svg itself. A finger hit-tests
-        // to whatever is actually painted under it - an axis band, the context
-        // box rect, a hexagon - and only lands on the <svg> element where the
-        // canvas is genuinely bare. Firing on svgEl made `event.target` the svg
-        // by construction, so the old assertion held on a device where the
-        // feature did not work at all. jsdom has no layout and cannot hit-test,
-        // so the target has to be chosen deliberately.
+        const pinnedCount = () => [...container.querySelectorAll('.d3-node')]
+            .filter(n => n.__data__ && n.__data__._paperOpen).length;
+        const dimmedCount = () => [...container.querySelectorAll('.d3-node')]
+            .filter(n => {
+                const o = parseFloat(n.style.opacity);
+                return Number.isFinite(o) && o < 0.9;
+            }).length;
+
+        const paper = [...container.querySelectorAll('.d3-node')]
+            .find(n => n.__data__ && n.__data__.type === 'paper');
+        if (!paper) throw new Error('no paper node to tap');
+
+        await tap(paper, 200, 300);
+        console.log(`DESELECT tap on a paper -> ${pinnedCount()} pinned, ${dimmedCount()} nodes greyed`);
+        if (pinnedCount() !== 1) throw new Error('tapping a paper did not select it');
+        if (!dimmedCount()) throw new Error('selecting a paper did not grey the others');
+
+        // Dispatch on a CHILD of the svg, not the svg itself. A finger
+        // hit-tests to whatever is actually painted under it - an axis band,
+        // the context box rect, a hexagon - and only lands on the <svg> element
+        // where the canvas is genuinely bare. Firing on svgEl made
+        // `event.target` the svg by construction, so an earlier assertion held
+        // on a device where the feature did not work at all. jsdom has no
+        // layout and cannot hit-test, so the target has to be chosen
+        // deliberately.
         const bare = container.querySelector('.g-axis-layer')
                   || container.querySelector('.g-main')
                   || svgEl;
         if (bare === svgEl) throw new Error('no non-svg background element to tap - test is vacuous');
 
-        // The other direction first, while something is still pinned: a tap that
-        // lands INSIDE a node must not clear the selection. The node's own
-        // handler owns that gesture. Without this, "treat everything that is not
-        // the svg as background" would pass the test below while dismissing the
-        // selection on every tap, including on the card being read.
-        const insideNode = container.querySelector('.d3-node rect')
-                        || container.querySelector('.d3-node');
-        if (insideNode) {
-            await act(async () => {
-                insideNode.dispatchEvent(pointerEvt('pointerdown', 300, 300));
-                insideNode.dispatchEvent(pointerEvt('pointerup', 301, 301));
-                await new Promise(r => setTimeout(r, 250));
-            });
-            const heldOn = [...container.querySelectorAll('.d3-node')]
-                .filter(n => n.__data__ && n.__data__._paperOpen).length;
-            console.log(`DESELECT tap on a node -> ${heldOn} papers still pinned (should be 1)`);
-            if (!heldOn) throw new Error('tapping a node cleared the selection - only the background should');
-        }
+        // The other direction first, while the paper is still pinned: a tap
+        // that lands INSIDE a node must not clear the selection. The node's own
+        // handler owns that gesture. Without this, "treat everything that is
+        // not the svg as background" would pass the check below while
+        // dismissing the selection on every tap, the card being read included.
+        const insideNode = paper.querySelector('rect') || paper;
+        await tap(insideNode, 300, 300);
+        console.log(`DESELECT tap on a node -> ${pinnedCount()} papers still pinned (should be 1)`);
+        if (!pinnedCount()) throw new Error('tapping a node cleared the selection - only the background should');
 
-        await act(async () => {
-            bare.dispatchEvent(pointerEvt('pointerdown', 20, 400));
-            bare.dispatchEvent(pointerEvt('pointerup', 21, 401));
-            await new Promise(r => setTimeout(r, 350));
-        });
-        const stillPinned = [...container.querySelectorAll('.d3-node')]
-            .filter(n => n.__data__ && n.__data__._paperOpen).length;
-        console.log(`DESELECT background tap -> ${stillPinned} papers still pinned`);
+        await tap(bare, 20, 400);
+        const stillPinned = pinnedCount();
+        const stillDimmed = dimmedCount();
+        console.log(`DESELECT background tap -> ${stillPinned} papers still pinned, ${stillDimmed} nodes still greyed`);
         if (stillPinned) throw new Error('tapping the background did not clear the selection');
+        // The half a stale hover leaves behind: the card can close while every
+        // other node stays dim, and the screen still reads as "something is
+        // selected".
+        if (stillDimmed) throw new Error(`${stillDimmed} nodes stayed greyed out after the background tap`);
     }
 
     step = 'display-options popover';
