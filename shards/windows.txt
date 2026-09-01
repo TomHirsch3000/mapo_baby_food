@@ -1,0 +1,6 @@
+# Shard for the 2026-09-02 re-evaluation pass. Balanced by PAIR count,
+# not claim count - claims run from 10 to 139 papers. Committed rather
+# than regenerated per machine so both halves cannot drift apart.
+# Feed to: python backend/evaluate_claims.py $(cat <file>) --force --model qwen3:8b
+# 39 claims, 3783 pairs
+allergen_variety_early back_to_sleep background_tv barefoot_walking bed_sharing_risk bedtime_routine childcare_quality coviewing_benefit early_academics educational_apps egg_cooked_safer egg_intro_early honey_avoid_12m hydrolysed_formula_allergy infant_swimming iron_rich_6m juice_limit music_exposure no_screens_under_2 outdoor_time_myopia pretend_play print_books_vs_ebooks repeated_exposure_veg restrictive_devices room_sharing short_sleep_obesity sleep_consolidation_6m sleep_hours_infant sleep_training_effective sleep_training_harm soft_bedding_risk swaddle_rolling_risk talk_volume texture_window tummy_time_motor video_deficit vitamin_k_birth walkers_injury weaning_6m

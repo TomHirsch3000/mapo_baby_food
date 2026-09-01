@@ -36,19 +36,23 @@ Two things worth knowing before trusting those numbers:
 
 ## What the Windows machine is doing
 
+Its half of the shard, with the same model the Mac will use:
+
 ```
-python backend/evaluate_claims.py --all --force --model qwen3-8b-gpu
+python backend/evaluate_claims.py $(grep -v '^#' shards/windows.txt) --force --model qwen3-8b-gpu
 ```
 
-~7,769 pairs at roughly 15 s each, so **26–33 hours**. It is resumable and
-commits per row. Rows are processed **best-first globally** (keyword score, then
-citations), so stopping early leaves the most useful evidence done for every
-claim rather than some claims finished and others untouched.
+3,783 pairs at roughly 15 s each, so **13-16 hours** — half what an unsharded
+pass would have cost. Resumable, commits per row.
 
-`qwen3-8b-gpu` is a local Modelfile (`backend/Modelfile.qwen3-8b-gpu`) that pins
+Within a shard, rows are processed **best-first** (keyword score, then
+citations), so stopping early leaves the most useful evidence done across every
+claim in that half rather than some claims finished and others untouched.
+
+`qwen3-8b-gpu` is a local Modelfile (`backend/Modelfile.qwen3-8b-gpu`) pinning
 `num_gpu 99` and `num_ctx 4096`. On the 6 GB card Ollama otherwise leaves ~2 GB
-unused and spills 25% of layers to CPU, which drops throughput from 35 tok/s to
-15.6. **On the Mac you do not need this file** — just use `qwen3:8b`.
+unused and spills 25% of layers to CPU, dropping throughput from 35 tok/s to
+15.6. **The Mac does not need it** — plain `qwen3:8b` is the same weights.
 
 ## What the Mac should do — in this order
 
@@ -56,71 +60,90 @@ unused and spills 25% of layers to CPU, which drops throughput from 35 tok/s to
 
 This is the question the Windows machine physically cannot answer. 6 GB of VRAM
 caps it at an 8B model; the Mac's 24 GB of unified memory fits a 20B comfortably.
-Cells 2–4 of the original bake-off table were written off as unreachable — on the
+Cells 2-4 of the original bake-off table were written off as unreachable — on the
 Mac they are reachable.
 
 ```sh
 git pull
 ollama pull gpt-oss:20b
 python backend/bakeoff.py --model gpt-oss:20b
-python backend/bakeoff.py --score-only        # all runs, side by side
+python backend/bakeoff.py --score-only        # every run, side by side
 ```
 
 **No database needed** — the bake-off reads `gold/gold_set.csv`, which is in git.
 
-Also worth 20 minutes, for a straight hardware comparison on identical work:
-
-```sh
-ollama pull qwen3:8b
-python backend/bakeoff.py --model qwen3:8b
-```
-
 The number to compare is **the complement column against 71%**. Overall accuracy
 can look fine while that column sits at chance, and that is precisely the map we
-are trying to replace.
+are replacing.
 
-**Set `MAX_TOKENS` expectations:** a reasoning model spends tokens thinking
-before it emits any JSON. `bakeoff.py` allows 1600 and `evaluate_claims.py` now
-matches it. At 450 — the old value — qwen3 failed 2 of 3 pairs outright. If
-`gpt-oss:20b` returns unparseable rows, raise the ceiling before concluding it
-cannot hold the format.
+**If it returns unparseable rows, raise `MAX_TOKENS` before concluding it cannot
+hold the format.** A reasoning model spends tokens thinking before it emits any
+JSON. At 450 — the old value in `evaluate_claims.py` — qwen3 failed 2 of 3 pairs;
+at 1600 it failed 0 of 57 on the same prompt and the same model.
 
-### 2. Then, depending on the result
+### 2. Then take the Mac half of the pass — with `qwen3:8b`, NOT `gpt-oss:20b`
 
-**If `gpt-oss:20b` beats 67% / 71%:** it should evaluate the high-stakes claims,
-where a wrong verdict does real harm. Fifteen claims carry `if_wrong: serious`
-in `gold/claim_audit.csv`; eight of those also cost nothing to follow:
-
-```
-back_to_sleep  honey_avoid_12m  soft_bedding_risk  overheating_sids
-vitamin_k_birth  blw_choking  swaddle_rolling_risk  walkers_injury
-```
-
-That is ~640 pairs for the eight, ~1,360 for all fifteen.
+The work is sharded so the two machines do not duplicate each other:
 
 ```sh
-python backend/evaluate_claims.py back_to_sleep honey_avoid_12m soft_bedding_risk \
-    overheating_sids vitamin_k_birth blw_choking swaddle_rolling_risk walkers_injury \
-    --force --model gpt-oss:20b
+python backend/evaluate_claims.py $(grep -v '^#' shards/mac.txt) --force --model qwen3:8b
 ```
 
-**If it does not beat qwen3:** stop. Record the result and let the Windows run
-finish. A null result here is worth having — it closes the "would a bigger model
-fix it" question that has been open since the bake-off was written.
+`shards/mac.txt` and `shards/windows.txt` split the 78 claims into disjoint
+halves, balanced by **pair** count — 3,784 against 3,783 — because claims run
+from 10 papers to 139 and splitting by claim count would be badly skewed. They
+are committed rather than regenerated per machine so the two halves cannot
+drift apart.
 
-### 3. Do NOT run `--all` against a shared database
+**Use `qwen3:8b` even if `gpt-oss:20b` scored better in step 1.** The two halves
+must be judged by the *same* model or the map stops being internally consistent:
+a claim scored by a 20B model and a claim scored by an 8B model would carry
+systematically different netSupport, and no reader could tell which effect they
+were looking at. A model swap is a decision about the *whole* corpus, not about
+half of it.
 
-Both machines writing one SQLite file over a share will corrupt it or block.
-`evaluate_claims.py` commits per row specifically so that **shards on separate
-copies** can be merged later, which is the supported pattern:
+So step 1 is a measurement, not a production run. If `gpt-oss:20b` wins
+decisively, that argues for re-running **everything** on it later — worth
+knowing, and worth the 20 minutes, but not something to act on mid-pass.
+
+### 2b. If `gpt-oss:20b` loses
+
+Nothing changes. Run step 2 as written. The null result still closes the "would
+a bigger model fix it" question that has been open since the bake-off was
+written, and it is worth recording in BACKLOG item 1b either way.
+
+### 3. Do NOT run `--all`, and do not share one database file
+
+Both machines writing a single SQLite file over a share will block or corrupt
+it. Each works on its own copy; the shards are disjoint so the halves can simply
+be stitched back together afterwards.
 
 ```sh
 python backend/snapshot_db.py            # -> data/claims-snapshot.db, safe mid-run
 python backend/snapshot_db.py --serve    # or hand it over the LAN
 ```
 
-`data/*.db` is gitignored, so **the Mac will not get the new verdicts from git.**
-It needs a snapshot copied across, and only for step 2 — step 1 needs no DB.
+`data/*.db` is gitignored, so **the Mac will not get verdicts from git.** It
+needs a snapshot copied across — and only for step 2. Step 1 needs no database
+at all.
+
+**Merging afterwards.** Because the two halves touch disjoint `claim_key` sets,
+the merge is an attach-and-copy rather than a reconciliation — no row is written
+by both machines, so there is nothing to resolve:
+
+```sql
+ATTACH 'mac-snapshot.db' AS mac;
+UPDATE claim_papers AS t
+   SET stance = (SELECT m.stance FROM mac.claim_papers m
+                  WHERE m.claim_key = t.claim_key AND m.paperId = t.paperId),
+       -- ...and the other verdict columns, including all three provenance ones
+ WHERE t.claim_key IN (<the mac shard>);
+```
+
+Sanity-check before trusting it: every row in the Mac half should come back with
+`evaluated_by = 'qwen3:8b'` and a `claim_text_used` matching the current
+registry. Any row that does not is either stale or was judged against wording
+that has since changed.
 
 ## Provenance — read this before overwriting anything
 
