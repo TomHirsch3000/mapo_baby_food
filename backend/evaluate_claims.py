@@ -19,6 +19,7 @@ Usage:
 """
 
 import argparse
+import glob
 import os
 import sqlite3
 import sys
@@ -33,7 +34,8 @@ from claims import CLAIMS, resolve_claim_keys, tested_text
 
 console.init()
 
-DATA_DIR = os.path.normpath(os.path.join(SCRIPT_DIR, "..", "data"))
+ROOT = os.path.normpath(os.path.join(SCRIPT_DIR, ".."))
+DATA_DIR = os.path.join(ROOT, "data")
 DB_PATH = os.path.join(DATA_DIR, "claims.db")
 
 # Generous on purpose, and it must stay in step with bakeoff.py. A reasoning
@@ -288,6 +290,85 @@ def run(conn, client, model, claim_keys, limit=None, force=False, stale=False,
     return done
 
 
+def report_coverage(conn):
+    """Which model judged what, and whether it judged the current wording.
+
+    The two shards are deliberately run on different models — the Mac holds a
+    20B and this laptop cannot — so a claim's netSupport carries a model effect
+    when compared against another claim's. That is a trade taken knowingly, for
+    the accuracy, and it is only safe while it stays visible. This is what keeps
+    it visible.
+    """
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(claim_papers)")}
+    if "evaluated_by" not in cols:
+        print("[error] no provenance columns — this DB predates the split")
+        return
+
+    rows = conn.execute("""
+        SELECT COALESCE(NULLIF(evaluated_by, ''), '(unevaluated)') AS who,
+               COUNT(*), COUNT(DISTINCT claim_key)
+          FROM claim_papers GROUP BY who ORDER BY 2 DESC""").fetchall()
+    print(f"{sum(r[1] for r in rows):,} pairs")
+    print()
+    print(f"  {'evaluated_by':<22} {'pairs':>7} {'claims':>7}")
+    print("  " + "-" * 38)
+    for who, pairs, claims in rows:
+        print(f"  {who:<22} {pairs:>7,} {claims:>7}")
+
+    # Progress against the shards, and the one failure they exist to prevent:
+    # a claim touched by BOTH machines. A claim part-done shows the old model
+    # alongside the new one, which is normal mid-pass and not what we are
+    # looking for - so the test is against the model each shard is meant to use,
+    # not against "more than one model appears".
+    shards = {}
+    for path in sorted(glob.glob(os.path.join(ROOT, "shards", "*.txt"))):
+        lines = open(path, encoding="utf-8").read().rstrip("\n").split("\n")
+        model = next((l.split(":", 1)[1].strip() for l in lines
+                      if l.startswith("# model:")), None)
+        if model:
+            shards[os.path.basename(path)[:-4]] = (model, lines[-1].split())
+
+    for name, (want, keys) in shards.items():
+        ph = ",".join("?" * len(keys))
+        total = conn.execute(
+            f"SELECT COUNT(*) FROM claim_papers WHERE claim_key IN ({ph})",
+            keys).fetchone()[0]
+        done = conn.execute(
+            f"SELECT COUNT(*) FROM claim_papers WHERE evaluated_by = ? "
+            f"AND claim_key IN ({ph})", [want] + keys).fetchone()[0]
+        # Anything in this shard carrying a model that is neither the shard's
+        # own nor the historical baseline means the other machine ran it too.
+        intruders = conn.execute(
+            f"SELECT DISTINCT evaluated_by FROM claim_papers "
+            f"WHERE claim_key IN ({ph}) AND evaluated_by NOT IN (?, 'mistral') "
+            f"AND evaluated_by IS NOT NULL AND evaluated_by != ''",
+            keys + [want]).fetchall()
+        pct = 100 * done / total if total else 0
+        print()
+        print(f"  shard {name:<10} {want:<16} {done:>5,}/{total:<5,} {pct:5.1f}%")
+        if intruders:
+            print(f"    ** ALSO judged by {[i[0] for i in intruders]} — the shards "
+                  f"overlapped, re-run one half **")
+
+    # A verdict reached against wording the registry no longer holds is stale,
+    # whoever produced it. Twelve claims were reworded on 2026-09-01 and two
+    # inverted outright, so this is not hypothetical.
+    stale = []
+    for key in CLAIMS:
+        n = conn.execute(
+            "SELECT COUNT(*) FROM claim_papers WHERE claim_key = ? "
+            "AND claim_text_used IS NOT NULL AND claim_text_used != '' "
+            "AND claim_text_used != ?", (key, tested_text(key))).fetchone()[0]
+        if n:
+            stale.append((key, n))
+    print()
+    print(f"  verdicts judged against superseded wording: {sum(n for _, n in stale):,}")
+    for key, n in stale:
+        print(f"    {key:<28} {n}")
+    if stale:
+        print("    -> those claims were reworded after judging; re-run them")
+
+
 def main():
     parser = argparse.ArgumentParser(description="LLM stance evaluation for claims")
     parser.add_argument("selection", nargs="*", help="claim / topic keys")
@@ -301,7 +382,17 @@ def main():
                              "fields existed - the resumable form of --force")
     parser.add_argument("--model", default=llm.DEFAULT_MODEL)
     parser.add_argument("--db", default=DB_PATH)
+    parser.add_argument("--coverage", action="store_true",
+                        help="report which model judged what, and run nothing")
     args = parser.parse_args()
+
+    if args.coverage:
+        conn = sqlite3.connect(args.db, timeout=60)
+        try:
+            report_coverage(conn)
+        finally:
+            conn.close()
+        return
 
     if not args.selection and not args.seed and not args.all:
         print("[error] pass --seed, --all, or claim/topic keys")

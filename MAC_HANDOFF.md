@@ -81,36 +81,41 @@ hold the format.** A reasoning model spends tokens thinking before it emits any
 JSON. At 450 — the old value in `evaluate_claims.py` — qwen3 failed 2 of 3 pairs;
 at 1600 it failed 0 of 57 on the same prompt and the same model.
 
-### 2. Then take the Mac half of the pass — with `qwen3:8b`, NOT `gpt-oss:20b`
-
-The work is sharded so the two machines do not duplicate each other:
+### 2. Then take the Mac half of the pass — with `gpt-oss:20b`
 
 ```sh
-python backend/evaluate_claims.py $(grep -v '^#' shards/mac.txt) --force --model qwen3:8b
+python backend/evaluate_claims.py $(grep -v '^#' shards/mac.txt) --force --model gpt-oss:20b
 ```
 
 `shards/mac.txt` and `shards/windows.txt` split the 78 claims into disjoint
 halves, balanced by **pair** count — 3,784 against 3,783 — because claims run
 from 10 papers to 139 and splitting by claim count would be badly skewed. They
-are committed rather than regenerated per machine so the two halves cannot
-drift apart.
+are committed rather than regenerated per machine so the two halves cannot drift
+apart.
 
-**Use `qwen3:8b` even if `gpt-oss:20b` scored better in step 1.** The two halves
-must be judged by the *same* model or the map stops being internally consistent:
-a claim scored by a 20B model and a claim scored by an 8B model would carry
-systematically different netSupport, and no reader could tell which effect they
-were looking at. A model swap is a decision about the *whole* corpus, not about
-half of it.
+**The two halves are deliberately judged by different models**, and that is a
+decision, not an oversight: the Mac can hold a 20B model and this laptop cannot,
+so half the corpus gets the better judge rather than none of it.
 
-So step 1 is a measurement, not a production run. If `gpt-oss:20b` wins
-decisively, that argues for re-running **everything** on it later — worth
-knowing, and worth the 20 minutes, but not something to act on mid-pass.
+The prompt and the objective are identical on both sides — same `STANCE_PROMPT`,
+same `tested_text()` wording, same validation. Only the model differs, and
+`evaluated_by` records which one on every row.
 
-### 2b. If `gpt-oss:20b` loses
+The consequence to keep in mind: within a claim, every paper is judged by one
+model, so each claim's own netSupport is internally consistent. What carries a
+model effect is *comparison between* claims, and the map encodes netSupport as
+position — so claim A at +0.4 against claim B at +0.6 partly reflects which
+machine ran it. That is why the logging matters, and why the fix if it ever
+looks wrong is cheap: re-run one shard on the other model.
 
-Nothing changes. Run step 2 as written. The null result still closes the "would
-a bigger model fix it" question that has been open since the bake-off was
-written, and it is worth recording in BACKLOG item 1b either way.
+Check the split landed as intended once it finishes:
+
+```sh
+python backend/evaluate_claims.py --coverage
+```
+
+**If `gpt-oss:20b` returns unparseable rows**, raise `MAX_TOKENS` before
+concluding it cannot hold the format — see step 1.
 
 ### 3. Do NOT run `--all`, and do not share one database file
 

@@ -1,6 +1,7 @@
 # Shard for the 2026-09-02 re-evaluation pass. Balanced by PAIR count,
 # not claim count - claims run from 10 to 139 papers. Committed rather
 # than regenerated per machine so both halves cannot drift apart.
-# Feed to: python backend/evaluate_claims.py $(cat <file>) --force --model qwen3:8b
+# Feed to: python backend/evaluate_claims.py $(cat <file>) --force --model gpt-oss:20b
 # 39 claims, 3784 pairs
+# model: gpt-oss:20b
 baby_led_weaning baby_sign bilingual_no_delay blw_choking breastfeeding_6m conversational_turns cow_milk_12m cow_milk_anaemia crawling_not_required dha_brain fewer_toys free_play heavy_metals_rice infant_massage nap_memory night_waking_normal overheating_sids pacifier_sids peanut_intro_delay_risk peanut_intro_early physical_activity_guideline plant_milk_inadequate reading_language salt_limit screen_attention screen_before_bed_sleep screen_feeding screen_language_delay screen_obesity screen_sleep sedentary_time_development self_settling shared_reading_early sugar_limit tummy_time_plagiocephaly upf_infant video_chat_exception vit_d_supplement weaning_before_4m_risk
