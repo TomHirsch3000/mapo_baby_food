@@ -46,6 +46,7 @@ sys.path.insert(0, SCRIPT_DIR)
 
 import console
 import llm
+import polarity
 import prompts_v2
 from claims import CLAIMS
 from evaluate_claims import STANCE_PROMPT, SYSTEM_PROMPT, validate
@@ -154,9 +155,64 @@ def _decomposed(client, model, row):
     return dict(screen, **stance, screened_out=False), 2
 
 
+def _polarity_v2(client, model, row):
+    """BACKLOG 1c, second attempt. See the V2 note in polarity.py for why."""
+    cfg = CLAIMS.get(row["claim_key"]) or {}
+    sign = cfg.get("claim_sign")
+    if sign is None:
+        return None, 0
+
+    raw = llm.call_llm(
+        client, model, polarity.SYSTEM,
+        polarity.PROMPT_V2.format(
+            claim_exposure=cfg.get("claim_exposure") or "(not recorded)",
+            claim_outcome=cfg.get("claim_outcome") or "(not recorded)",
+            title=(row["title"] or "")[:400],
+            abstract=(row["abstract"] or "(no abstract)")[:1800]),
+        temperature=0.0, max_tokens=MAX_TOKENS)
+
+    reported = polarity.validate_v2(llm.parse_json_response(raw))
+    stance, reason = polarity.resolve(sign, reported)
+    if stance is None:
+        return None, 1
+    return dict(reported, stance=stance, resolved_by=reason), 1
+
+
+def _polarity(client, model, row):
+    """BACKLOG 1c. The model reports facts; Python computes the verdict.
+
+    Needs `claim_sign`, `claim_exposure` and `claim_outcome` on the registry
+    (1d). A claim without them is skipped rather than guessed at, so a
+    half-filled registry shows up as missing rows instead of as bad scores.
+    """
+    cfg = CLAIMS.get(row["claim_key"]) or {}
+    sign = cfg.get("claim_sign")
+    if sign is None:
+        return None, 0                    # registry not filled in for this claim
+
+    raw = llm.call_llm(
+        client, model, polarity.SYSTEM,
+        polarity.PROMPT.format(
+            claim_exposure=cfg.get("claim_exposure") or "(not recorded)",
+            claim_outcome=cfg.get("claim_outcome") or "(not recorded)",
+            title=(row["title"] or "")[:400],
+            abstract=(row["abstract"] or "(no abstract)")[:1800]),
+        temperature=0.0, max_tokens=MAX_TOKENS)
+
+    reported = polarity.validate(llm.parse_json_response(raw))
+    stance, reason = polarity.resolve(sign, reported)
+    if stance is None:
+        return None, 1
+    # `resolved_by` carries the arithmetic that produced the verdict, so a wrong
+    # row can be traced to the field that caused it rather than re-run blind.
+    return dict(reported, stance=stance, resolved_by=reason), 1
+
+
 PROMPTS = {
     "current": _one_call(SYSTEM_PROMPT, build_current, validate),
     "decomposed": _decomposed,
+    "polarity": _polarity,
+    "polarity2": _polarity_v2,
 }
 
 

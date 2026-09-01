@@ -478,27 +478,57 @@ reading". Small, and only worth doing when the screen pass changes what
 
 ---
 
-### 19. There is no way to add a claim to the map
+### 19. Claim lifecycle — add, re-run, amend, retire
 
-`CLAIMS` in `backend/claims.py` is a hand-edited literal, and adding an entry is
-only the first step: the claim then needs `import_claims.py` to collect for it,
-`evaluate_claims.py` to judge it, and a topic image if it opens a new group.
-Nothing sequences that, so a new claim is a multi-command ritual that has to be
-remembered correctly, and a half-completed one leaves a claim on the map with
-zero papers and no signal that it is unfinished rather than unstudied.
+`CLAIMS` in `backend/claims.py` is a hand-edited literal, and editing it is only
+the first step. A new or changed claim then needs `import_claims.py` to collect
+for it, `evaluate_claims.py` to judge it, and `build_claims_data.py` to export
+it. Nothing sequences that, so every claim operation is a multi-command ritual
+that has to be remembered correctly — and a half-finished one leaves a claim on
+the map with zero papers and no signal that it is unfinished rather than
+unstudied, which is the one thing the map must never get wrong.
 
-This became blocking on 2026-08-31, when `responsive_interaction` and
-`motor_cognitive_link` were dropped for being unfalsifiable (see
-`gold/dropped_claims.md`). Rewriting rather than deleting them is the right
-answer, and there is no path that does it.
+It became blocking twice on 2026-08-31: `responsive_interaction` and
+`motor_cognitive_link` were dropped for being unfalsifiable
+(`gold/dropped_claims.md`), and the audit pass rewrote a further batch. Both
+wanted a re-run of one claim; neither had a path to it.
 
-**Wanted:** one command that takes a claim key, validates the registry entry,
-collects, evaluates and exports — resumable, and honest about which stage a
-claim has reached. `--counts-only` already proves the cheap-sizing step works.
+**Four operations, one mechanism:**
 
-**Note also:** dropping a claim currently orphans its `claim_papers` rows rather
-than removing them. That is deliberate (the OpenAlex spend is not recoverable)
-but it means row counts in the DB drift above the registry, and nothing says so.
+| | does |
+|---|---|
+| **add** | new key, collect, evaluate, export |
+| **re-run** | same key, re-collect and/or re-evaluate — after a wording change, a new model, or a new prompt |
+| **amend** | change wording, sign or type. Invalidates every stored verdict for that claim, because they were judged against the old sentence. Must say so and offer the re-run. |
+| **retire** | leave the map. Papers stay in claims.db; only the registry entry goes. |
+
+**Amend is the dangerous one.** Rewriting `bilingual_no_delay` from a negation to
+a positive assertion inverts the meaning of all 118 stored verdicts on it. There
+is currently nothing that notices, so the exported JSON would keep serving them
+against the new wording. Any amend path has to mark the claim stale and refuse
+to export it until re-evaluated.
+
+**A row of the audit table is the input.** `gold/claim_audit.csv` already holds
+exactly what a claim needs: the two wordings, `claim_type`, `claim_sign`,
+exposure, outcome, age range, the OpenAlex query, keyword hints, the stakes
+fields and the guidance links. So the mechanism is "take one row, make it real",
+and the registry stops being a Python literal edited by hand.
+
+**Wanted, in order:**
+
+1. `python backend/claim.py add|rerun|amend|retire <key>` — resumable, honest
+   about which stage a claim has reached, and refusing to export a stale one.
+   `--counts-only` already proves the cheap-sizing step works.
+2. A claim-state column so the UI can distinguish *no papers collected yet* from
+   *collected and nobody has studied it* — currently indistinguishable, and they
+   mean opposite things to a reader.
+3. Only then, a **form on the site** that writes a row and triggers the pipeline.
+   The form is the easy part; it is worth nothing until the four operations
+   above are safe to run unattended.
+
+**Note:** retiring a claim orphans its `claim_papers` rows rather than deleting
+them. That is deliberate — the OpenAlex spend is not recoverable — but it means
+DB row counts drift above the registry and nothing says so.
 
 ---
 

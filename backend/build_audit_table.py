@@ -90,12 +90,26 @@ def main():
     args = p.parse_args()
 
     stakes = {r['claim_key']: r for r in load(os.path.join(args.scratch, 'stakes_draft.json'))}
-    guide = {r['claim_key']: r for r in load(os.path.join(args.scratch, 'guidance_pilot_out.json'))}
+    # Prefer the verified merge: every quote in it has been re-fetched and
+    # proved present on its page. The raw batch files are what the sourcing
+    # agents produced and are not safe to show a parent unchecked.
+    guide_path = os.path.join(args.scratch, 'guidance_verified.json')
+    if not os.path.exists(guide_path):
+        guide_path = os.path.join(args.scratch, 'guidance_pilot_out.json')
+    guide = {r['claim_key']: r for r in load(guide_path)}
 
     rows = []
     for key, c in CLAIMS.items():
         tested = tested_text(key)
         sign, verb, exposure, outcome = draft_sign(tested)
+        # Once 1d has filled the registry, the registry IS the answer - showing a
+        # re-derivation beside it would have the reviewer checking the drafter
+        # rather than the data the pipeline actually reads.
+        if c.get("claim_sign") is not None:
+            sign = c["claim_sign"]
+            exposure = c.get("claim_exposure") or exposure
+            outcome = c.get("claim_outcome") or outcome
+            verb = verb or "(from registry)"
         st = stakes.get(key, {})
         g = guide.get(key, {})
         nhs, aap = g.get('nhs', {}), g.get('aap', {})

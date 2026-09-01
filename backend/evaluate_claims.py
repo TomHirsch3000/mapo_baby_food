@@ -36,6 +36,14 @@ console.init()
 DATA_DIR = os.path.normpath(os.path.join(SCRIPT_DIR, "..", "data"))
 DB_PATH = os.path.join(DATA_DIR, "claims.db")
 
+# Generous on purpose, and it must stay in step with bakeoff.py. A reasoning
+# model spends tokens thinking BEFORE it writes any content, so a budget sized
+# for a model that answers straight away truncates it mid-JSON and the row comes
+# back unparseable. Measured: qwen3:8b failed 2 of 3 pairs at 450 and 0 of 57 at
+# 1600 in the bake-off, which is the same prompt on the same model - the only
+# difference was this number. A ceiling costs a terse model nothing.
+MAX_TOKENS = 1600
+
 # "mixed" is a first-class verdict, not a hedge. A meta-analysis can find that
 # heavy screen use harms language WHILE educational programming helps it; forcing
 # that into supports/refutes throws away the most interesting thing it says, and
@@ -113,6 +121,13 @@ def ensure_schema(conn):
         # thrown away, which left every verdict unauditable after the fact - the
         # only way to check one was to pay for inference again. Keep them.
         ("finding", "TEXT"), ("direction", "TEXT"),
+        # Provenance. `claim_text_used` matters more than it looks: a claim's
+        # wording changes between passes - twelve did on 2026-09-01, two of them
+        # inverting outright - so knowing WHO answered is not enough to make two
+        # passes comparable. Storing the sentence that was actually judged makes
+        # every verdict self-describing, and a later comparison honest.
+        ("evaluated_by", "TEXT"), ("prompt_version", "TEXT"),
+        ("claim_text_used", "TEXT"),
     ]:
         if name not in cols:
             conn.execute(f"ALTER TABLE claim_papers ADD COLUMN {name} {decl}")
@@ -175,7 +190,7 @@ def evaluate_pair(client, model, claim_text, title, abstract):
         abstract=(abstract or "(no abstract)")[:1800],
     )
     raw = llm.call_llm(client, model, SYSTEM_PROMPT, prompt,
-                       temperature=0.0, max_tokens=450)
+                       temperature=0.0, max_tokens=MAX_TOKENS)
     return validate(llm.parse_json_response(raw))
 
 
@@ -193,7 +208,8 @@ PENDING_SQL = """
 """
 
 
-def run(conn, client, model, claim_keys, limit=None, force=False, stale=False):
+def run(conn, client, model, claim_keys, limit=None, force=False, stale=False,
+        prompt_version="current"):
     ensure_schema(conn)
 
     # `direction` is only ever written by the current evaluator, so a row that
@@ -244,11 +260,13 @@ def run(conn, client, model, claim_keys, limit=None, force=False, stale=False):
             UPDATE claim_papers
                SET stance = ?, confidence = ?, stance_summary = ?,
                    evidence_strength = ?, study_type = ?, finding = ?, direction = ?,
-                   evaluated_at = datetime('now')
+                   evaluated_at = datetime('now'),
+                   evaluated_by = ?, prompt_version = ?, claim_text_used = ?
              WHERE claim_key = ? AND paperId = ?
         """, (result["stance"], result["confidence"], result["stance_summary"],
               result["evidence_strength"], result["study_type"],
-              result["finding"], result["direction"], claim_key, paper_id))
+              result["finding"], result["direction"],
+              model, prompt_version, claim_text, claim_key, paper_id))
         done += 1
         tally[result["stance"]] += 1
 
