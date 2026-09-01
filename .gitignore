@@ -72,3 +72,8 @@ gold/*.numbers
 # regenerate (minutes, not the hours a full pass costs) and usually partial.
 # What survives a run is the SCORE, which is recorded in DECISIONS.md.
 gold/runs/
+
+# Local backups and one-off transfers. The DB moves between machines as
+# data/claims-snapshot.db, which IS committed - see snapshot_db.py.
+*.bak
+Data from mac/

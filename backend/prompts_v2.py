@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
 """
-prompts_v2.py — Draft prompts for the relevance restructure. NOT WIRED IN YET.
+prompts_v2.py — Prompts for the relevance restructure.
+
+Wired into `bakeoff.py` as the `decomposed` candidate, so it can be measured
+against the one-call prompt. NOT yet wired into the live pipeline: nothing here
+writes to claims.db, and SCREEN_COLUMNS below is still a proposal rather than
+applied schema. Measure first, migrate second.
 
 The current evaluator asks one question: "does this paper support the claim?"
 Everything that is not a supports/refutes/mixed answer falls into `neutral`,
@@ -244,3 +249,126 @@ SCREEN_COLUMNS = [
     ("age_quote",        "TEXT"),     # the phrase the ages came from
     ("screened_at",      "TEXT"),
 ]
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Validators
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# Same contract as evaluate_claims.validate: clamp the model's output into the
+# shape the rest of the code expects, or return None if it cannot be used at
+# all. None is a real result and must not be retried away — a model that cannot
+# hold the output format is worse at the job, and hiding that flatters it.
+
+STANCES = ("supports", "refutes", "neutral", "mixed")
+AGE_BASES = ("stated", "inferred", "unknown")
+OVERLAPS = ("same", "related", "different")
+
+MAX_AGE_MONTHS = 1200          # 100 years; anything beyond is a parse artefact
+
+
+def _months(value):
+    """An age in months, or None. Rejects the out-of-range numbers a model
+    produces when it reports years in a field labelled months."""
+    try:
+        n = int(float(value))
+    except (TypeError, ValueError):
+        return None
+    return n if 0 <= n <= MAX_AGE_MONTHS else None
+
+
+def validate_screen(data):
+    """Clamp the SCREEN call's output. None if the tier is unreadable."""
+    if not isinstance(data, dict):
+        return None
+
+    # Loose substring match, like the stance validator, because models pad the
+    # answer: "directly tests it", "mostly background".
+    raw = str(data.get("relevance", "")).strip().lower()
+    relevance = next((t for t in RELEVANCE_TIERS if t in raw), None)
+    if relevance is None:
+        return None
+
+    offers = str(data.get("offers") or "").strip().lower()
+    offers = next((o for o in OFFERS if o in offers), "")
+
+    # The prompt says `framework` MUST name what it offers. A framework verdict
+    # naming nothing is exactly the failure the rubric warns about — the tier
+    # used as a bin for "interesting but does not fit" — so it is demoted here
+    # rather than kept as a framework with a blank beside it.
+    if relevance == "framework" and not offers:
+        relevance = "background"
+
+    age_min = _months(data.get("age_min_months"))
+    age_max = _months(data.get("age_max_months"))
+    if age_min is not None and age_max is not None and age_min > age_max:
+        age_min, age_max = age_max, age_min
+
+    basis = str(data.get("age_basis") or "").strip().lower()
+    basis = next((b for b in AGE_BASES if b in basis), "unknown")
+    # A basis of "stated" with no age is the model agreeing with the field label
+    # rather than reporting a reading, so the absent age wins.
+    if age_min is None and age_max is None:
+        basis = "unknown"
+
+    overlap = str(data.get("overlap") or "").strip().lower()
+    overlap = next((o for o in OVERLAPS if o in overlap), "")
+
+    return {
+        "relevance": relevance,
+        "relevance_reason": str(data.get("relevance_reason") or "").strip()[:400],
+        "offers": offers,
+        "population": str(data.get("population") or "").strip()[:200],
+        "exposure": str(data.get("exposure") or "").strip()[:200],
+        "outcome": str(data.get("outcome") or "").strip()[:200],
+        "overlap": overlap,
+        "age_min_months": age_min,
+        "age_max_months": age_max,
+        "age_basis": basis,
+        "age_quote": str(data.get("age_quote") or "").strip()[:300],
+    }
+
+
+def validate_stance(data):
+    """Clamp the STANCE call's output.
+
+    Mirrors evaluate_claims.validate, with one difference: `mixed` is a stance
+    here rather than a value of evidence_strength, because the screen has
+    already removed the papers that were making `neutral` mean three things.
+    """
+    if not isinstance(data, dict):
+        return None
+
+    stance = str(data.get("stance", "")).strip().lower()
+    stance = next((s for s in STANCES if s in stance), None)
+
+    # Same reasoning as the one-call evaluator: `direction` is written first,
+    # after the model has restated the finding, so it is the more considered
+    # answer and wins when the two disagree.
+    direction = str(data.get("direction", "")).strip().lower()
+    if "both" in direction:              # first: "agrees with both" is mixed
+        stance = "mixed"
+    elif "disagree" in direction:
+        stance = "refutes"
+    elif "inconclusive" in direction:
+        stance = "neutral"
+    elif "agree" in direction:           # after "disagree", so a real agree
+        stance = "supports"
+    if stance is None:
+        return None
+
+    try:
+        confidence = max(0, min(100, int(float(data.get("confidence", 50)))))
+    except (TypeError, ValueError):
+        confidence = 50
+    if stance == "neutral":
+        confidence = min(confidence, 49)   # the prompt asks for below 50
+
+    return {
+        "stance": stance,
+        "confidence": confidence,
+        "stance_summary": str(data.get("summary") or "").strip()[:400],
+        "study_type": str(data.get("study_type") or "other").strip().lower()[:40],
+        "finding": str(data.get("finding") or "").strip()[:400],
+        "direction": direction[:60],
+    }

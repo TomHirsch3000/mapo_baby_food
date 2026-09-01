@@ -1,0 +1,24 @@
+# qwen3:8b pinned to fit a 6 GB card.
+#
+# Ollama's own fit estimator leaves ~2 GB of a 6141 MiB RTX 4050 unused and
+# parks 25% of the layers on the CPU. The GPU then idles at 0-14% waiting on
+# them and throughput collapses to CPU speed: 15.6 tok/s measured, against
+# 34.6 tok/s with every layer resident. Over a 7,769-pair pass that is the
+# difference between an overnight run and a fortnight.
+#
+# num_gpu 99 means "all of them" - it is a ceiling, not a count.
+# num_ctx 4096 is sized for the longest prompt (~2,000 tokens) plus bakeoff's
+# 1,600-token output ceiling, with headroom. A smaller window truncates a
+# reasoning model mid-JSON, which the scorer then reads as UNPARSEABLE.
+#
+# Requires OLLAMA_FLASH_ATTENTION=1 and OLLAMA_KV_CACHE_TYPE=q8_0 on the
+# server, which is what shrinks the KV cache enough for this to fit.
+#
+#   ollama create qwen3-8b-gpu -f backend/Modelfile.qwen3-8b-gpu
+#   ollama ps        # must read 100% GPU
+
+FROM qwen3:8b
+
+PARAMETER num_gpu 99
+PARAMETER num_ctx 4096
+PARAMETER temperature 0.0

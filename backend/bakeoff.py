@@ -46,6 +46,8 @@ sys.path.insert(0, SCRIPT_DIR)
 
 import console
 import llm
+import prompts_v2
+from claims import CLAIMS
 from evaluate_claims import STANCE_PROMPT, SYSTEM_PROMPT, validate
 
 console.init()
@@ -92,26 +94,70 @@ def build_current(row):
     )
 
 
-PROMPTS = {
-    "current": (SYSTEM_PROMPT, build_current, validate),
-}
+# A candidate is a runner: (client, model, row) -> (result | None, calls made).
+# Returning the call count rather than assuming it is what lets the per-pass
+# projection stay honest for a design where most pairs stop after one call.
+def _one_call(system, build, check):
+    """Wrap a single-call prompt in the runner signature the loop expects."""
+    def runner(client, model, row):
+        raw = llm.call_llm(client, model, system, build(row),
+                           temperature=0.0, max_tokens=MAX_TOKENS)
+        return check(llm.parse_json_response(raw)), 1
+    return runner
 
-# `decomposed` is registered here once prompts_v2 grows it. Keeping the registry
-# explicit means adding a candidate prompt is one entry, not an edit to the loop.
-try:
-    import prompts_v2
-    if hasattr(prompts_v2, "DECOMPOSED_PROMPT"):
-        PROMPTS["decomposed"] = (
-            prompts_v2.STANCE_SYSTEM,
-            lambda row: prompts_v2.DECOMPOSED_PROMPT.format(
-                tested=row["tested_as"],
-                title=(row["title"] or "")[:400],
-                abstract=(row["abstract"] or "(no abstract)")[:1800],
-            ),
-            prompts_v2.validate_decomposed,
-        )
-except (ImportError, AttributeError):
-    pass
+
+def claim_population(claim_key):
+    """What the CLAIM is about, fed to the screen so the model is not left
+    inferring the intended population from the paper it is judging — which is
+    circular, and is how a study of eight-year-olds gets called `direct`."""
+    return (CLAIMS.get(claim_key) or {}).get("age_range") or "infants and toddlers"
+
+
+def _decomposed(client, model, row):
+    """SCREEN, then STANCE only for papers the screen says bear on the claim.
+
+    The screened-out papers are the point. They never reach a question about
+    direction, so nothing they might have said can leak into a verdict — and
+    they cost one cheap call instead of two.
+    """
+    title = (row["title"] or "")[:400]
+    abstract = (row["abstract"] or "(no abstract)")[:1800]
+
+    raw = llm.call_llm(
+        client, model, prompts_v2.SCREEN_SYSTEM,
+        prompts_v2.SCREEN_PROMPT.format(
+            tested=row["tested_as"],
+            population=claim_population(row["claim_key"]),
+            title=title, abstract=abstract),
+        temperature=0.0, max_tokens=MAX_TOKENS)
+    screen = prompts_v2.validate_screen(llm.parse_json_response(raw))
+    if screen is None:
+        return None, 1
+
+    if screen["relevance"] not in prompts_v2.SCORED_TIERS:
+        # Screened out, and that IS the answer. `stance: None` is a refusal to
+        # judge, not a missing value, and the scorer counts it as the win it is.
+        return dict(screen, stance=None, screened_out=True), 1
+
+    raw = llm.call_llm(
+        client, model, prompts_v2.STANCE_SYSTEM,
+        prompts_v2.STANCE_PROMPT.format(
+            tested=row["tested_as"], title=title, abstract=abstract,
+            relevance_line=prompts_v2.RELEVANCE_LINE[screen["relevance"]],
+            exposure=screen["exposure"] or "(not stated)",
+            outcome=screen["outcome"] or "(not stated)",
+            population=screen["population"] or "(not stated)"),
+        temperature=0.0, max_tokens=MAX_TOKENS)
+    stance = prompts_v2.validate_stance(llm.parse_json_response(raw))
+    if stance is None:
+        return None, 2
+    return dict(screen, **stance, screened_out=False), 2
+
+
+PROMPTS = {
+    "current": _one_call(SYSTEM_PROMPT, build_current, validate),
+    "decomposed": _decomposed,
+}
 
 
 def sync_from_numbers():
@@ -177,7 +223,7 @@ def save_run(model, prompt_name, results):
 
 
 def run(model, prompt_name, limit=None, force=False):
-    system, build, check = PROMPTS[prompt_name]
+    runner = PROMPTS[prompt_name]
     rows = load_gold()
     results = {} if force else load_run(model, prompt_name)
 
@@ -190,13 +236,12 @@ def run(model, prompt_name, limit=None, force=False):
 
     print(f"[{model} / {prompt_name}] {len(todo)} to run "
           f"({len(results)} cached)\n")
+    client = llm.get_client(model=model)[0]
     started = time.time()
     for i, row in enumerate(todo, 1):
         t = time.time()
         try:
-            raw = llm.call_llm(llm.get_client(model=model)[0], model, system,
-                               build(row), temperature=0.0, max_tokens=MAX_TOKENS)
-            parsed = check(llm.parse_json_response(raw))
+            parsed, calls = runner(client, model, row)
         except Exception as e:
             print(f"  [{i}/{len(todo)}] #{row['n']:>2s} ERROR {e}")
             continue
@@ -207,31 +252,58 @@ def run(model, prompt_name, limit=None, force=False):
             # a model that cannot hold the output format is worse at the job, and
             # hiding that behind a retry flatters it in the scoring.
             results[row["n"]] = {"stance": None, "unparseable": True,
-                                 "seconds": round(elapsed, 1)}
+                                 "seconds": round(elapsed, 1), "calls": calls}
             print(f"  [{i}/{len(todo)}] #{row['n']:>2s} {elapsed:5.1f}s  UNPARSEABLE")
         else:
             parsed["seconds"] = round(elapsed, 1)
+            parsed["calls"] = calls
             results[row["n"]] = parsed
+            # A screened-out paper has no stance, and printing the tier instead
+            # is the more useful line: it says WHY there is no verdict.
+            verdict = parsed.get("stance") or f"[{parsed.get('relevance', '?')}]"
             print(f"  [{i}/{len(todo)}] #{row['n']:>2s} {elapsed:5.1f}s  "
-                  f"{parsed['stance']:8s}  {row['title'][:52]}")
+                  f"{verdict:12s}  {row['title'][:48]}")
 
         save_run(model, prompt_name, results)   # per row: kill it any time
 
     mean = (time.time() - started) / max(1, len(todo))
-    print(f"\n  mean {mean:.1f}s/pair -> a 7,769-pair pass would take "
-          f"{mean * 7769 / 3600:.1f} h ({mean * 13100 / 3600:.1f} h two-call)")
+    per_pair = sum(r.get("calls", 1) for r in results.values()) / max(1, len(results))
+    print(f"\n  mean {mean:.1f}s/pair, {per_pair:.2f} calls/pair "
+          f"-> a 7,769-pair pass would take {mean * 7769 / 3600:.1f} h")
     return results
 
 
-def score(results, rows):
-    """Agreement with the hand labels, overall and per stratum."""
-    # "does not test" is a RELEVANCE judgement, not a stance. Counting it as a
-    # stance the model got wrong would penalise a model for the one thing the
-    # labeller and the model actually agree on.
-    def truth_of(r):
-        v = (r.get("YOUR_stance") or "").strip().lower()
-        return None if (not v or v in NO_STANCE) else v
+# "does not test" is a RELEVANCE judgement, not a stance. Counting it as a
+# stance the model got wrong would penalise a model for the one thing the
+# labeller and the model actually agree on.
+def truth_of(row):
+    v = (row.get("YOUR_stance") or "").strip().lower()
+    return None if (not v or v in NO_STANCE) else v
 
+
+# Labels written before the four-tier rubric settled. "not relevant" is
+# unambiguously `background`; "does not test" names the stance rather than the
+# tier, so it cannot be resolved and that row sits out the relevance scoring
+# rather than being guessed at.
+RELEVANCE_ALIASES = {"not relevant": "background"}
+
+
+def relevance_of(row):
+    v = (row.get("YOUR_relevance") or "").strip().lower()
+    v = RELEVANCE_ALIASES.get(v, v)
+    return v if v in prompts_v2.RELEVANCE_TIERS else None
+
+
+def score(results, rows):
+    """Agreement with the hand labels: stance, and whether the paper bears on
+    the claim at all.
+
+    The second half exists because the first half cannot see the largest error.
+    A stance table necessarily drops every row the gold set marks "does not
+    test" — 34 of these 60 — which is precisely where a one-call prompt fails,
+    since it has no way to answer "this paper is not about that" and must
+    return a stance regardless.
+    """
     labelled = [r for r in rows if truth_of(r)]
     if not labelled:
         return None
@@ -253,8 +325,40 @@ def score(results, rows):
         overall[1] += 1
         overall[0] += int(ok)
 
+    # A verdict asserted about a paper that does not bear on the claim. Lower is
+    # better, and a one-call prompt scores 100% here by construction — that is
+    # the finding, not a bug in the scoring.
+    false_stance = [0, 0]
+    for row in rows:
+        if truth_of(row) or relevance_of(row) not in ("framework", "background"):
+            continue
+        got = results.get(row["n"])
+        if not got or got.get("unparseable"):
+            continue
+        false_stance[1] += 1
+        false_stance[0] += int(bool(got.get("stance")))
+
+    # Only a prompt that reports a tier can be scored on one. `bears` is the
+    # coarser and more important of the two: the four-way tier is a judgement
+    # call at the margins, but direct/indirect versus framework/background is
+    # the decision that gates whether the expensive call happens at all.
+    tier, bears = [0, 0], [0, 0]
+    for row in rows:
+        truth_rel = relevance_of(row)
+        got = results.get(row["n"])
+        if not truth_rel or not got or not got.get("relevance"):
+            continue
+        tier[1] += 1
+        tier[0] += int(got["relevance"] == truth_rel)
+        bears[1] += 1
+        bears[0] += int((got["relevance"] in prompts_v2.SCORED_TIERS)
+                        == (truth_rel in prompts_v2.SCORED_TIERS))
+
+    calls = [r.get("calls", 1) for r in results.values() if isinstance(r, dict)]
     return {"overall": overall, "strata": tally, "unparseable": unparseable,
-            "labelled": len(labelled)}
+            "labelled": len(labelled), "false_stance": false_stance,
+            "tier": tier, "bears": bears,
+            "calls": sum(calls) / len(calls) if calls else 1.0}
 
 
 def print_scores(all_scores):
@@ -262,22 +366,41 @@ def print_scores(all_scores):
         print("\nNo hand labels yet - fill YOUR_stance in gold/gold_set.csv.")
         return
 
+    def pct(pair, width=9):
+        c, t = pair
+        return f"{(100 * c / t):>{width}.0f}%" if t else f"{'-':>{width + 1}}"
+
     name_w = max(len(n) for n in all_scores)
+
     head = f"  {'run':{name_w}}   overall  " + "  ".join(f"{s[:10]:>10}" for s in STRATA)
-    print("\n" + head)
+    print("\n  STANCE — which way does it point?  (scored on the rows that take a stance)")
+    print(head)
     print("  " + "-" * (len(head) - 2))
     for name, s in all_scores.items():
         c, t = s["overall"]
-        cells = []
-        for st in STRATA:
-            cc, tt = s["strata"][st]
-            cells.append(f"{(100*cc/tt):>9.0f}%" if tt else f"{'-':>10}")
-        pct = f"{100*c/t:.0f}%" if t else "-"
-        print(f"  {name:{name_w}}   {pct:>6} {c:>2}/{t:<2} " + " ".join(cells))
+        cells = [pct(s["strata"][st]) for st in STRATA]
+        overall = f"{100*c/t:.0f}%" if t else "-"
+        print(f"  {name:{name_w}}   {overall:>6} {c:>2}/{t:<2} " + " ".join(cells))
 
-    print("\n  `complement` is the column that decides this. It is the 15 rows where")
-    print("  the paper reports the OPPOSITE exposure to the claim. An overall score")
-    print("  that looks fine while that column sits near 50% is the current map.")
+    print("\n  `complement` is the column that decides this. It is the rows where the")
+    print("  paper reports the OPPOSITE exposure to the claim. An overall score that")
+    print("  looks fine while that column sits near 50% is the current map.")
+
+    head2 = (f"  {'run':{name_w}}   false stance    bears on?         tier   calls/pair")
+    print("\n\n  RELEVANCE — does the paper bear on the claim at all?")
+    print(head2)
+    print("  " + "-" * (len(head2) - 2))
+    for name, s in all_scores.items():
+        fc, ft = s["false_stance"]
+        print(f"  {name:{name_w}}  {pct(s['false_stance'], 8)} {fc:>2}/{ft:<2}  "
+              f"{pct(s['bears'], 8)} {s['bears'][0]:>2}/{s['bears'][1]:<2}  "
+              f"{pct(s['tier'], 8)}      {s['calls']:.2f}")
+
+    print("\n  `false stance` is a verdict asserted about a paper the gold set says does")
+    print("  not test the claim. LOWER IS BETTER, and a one-call prompt scores 100% by")
+    print("  construction — it is never offered the option of declining. That is the")
+    print("  number the whole two-call design exists to move.")
+    print("  `bears on?` and `tier` are blank for a prompt that reports no relevance.")
 
 
 def main():
