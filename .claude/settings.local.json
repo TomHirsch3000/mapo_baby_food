@@ -2,36 +2,15 @@
   "permissions": {
     "allow": [
       "Bash",
+      "PowerShell",
       "WebFetch(domain:docs.openalex.org)",
       "WebFetch(domain:developers.openalex.org)",
-      "Bash(curl -s \"https://api.openalex.org/topics?search=infant+nutrition&per-page=20\")",
-      "Bash(python -c ' *)",
-      "Bash(python backend/build_data.py)",
-      "Bash(netstat -ano)",
-      "Bash(findstr \":300\")",
-      "mcp__Claude_in_Chrome__tabs_context_mcp",
-      "Bash(git add *)",
-      "Bash(python build_food_data.py)",
-      "Bash(python -c \"import json; d=json.load\\(open\\('frontend/public/food_universe.json'\\)\\); nodes=d['nodes']; print\\(f'{len\\(nodes\\)} nodes'\\); print\\('Sample nodes:'\\); [print\\(f'  {n[\\\\\"name\\\\\"]:20s} group={n[\\\\\"group\\\\\"]:12s} icon={n[\\\\\"iconCategory\\\\\"]:15s} hasPapers={n[\\\\\"hasPapers\\\\\"]}'\\) for n in nodes[:8]]\")",
-      "Bash(npm run *)",
-      "Bash(curl -s http://localhost:5173/)",
-      "Bash(npx vite *)",
-      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:5173/)",
       "WebFetch(domain:github.com)",
       "WebFetch(domain:api.github.com)",
       "WebFetch(domain:raw.githubusercontent.com)",
-      "Bash(python backend/build_food_data.py)",
-      "Bash(node -e ' *)",
-      "Bash(git commit -m ' *)",
-      "Bash(grep -E \"\\\\.\\(json|js\\)$\")",
-      "Bash(xargs -I {} sh -c 'echo \"File: {}\"; head -1 {} | head -c 500; echo')",
-      "Bash(python -c \"import json; nb = json.load\\(open\\('import_baby_food.ipynb'\\)\\); print\\(f'Cells: {len\\(nb[\\\\\"cells\\\\\"]\\)}'\\); [print\\(f'  {c[\\\\\"id\\\\\"][:12]}  {c[\\\\\"cell_type\\\\\"]:8s}  {c[\\\\\"source\\\\\"][:60].replace\\(chr\\(10\\),\\\\\" \\\\\"\\)!r}'\\) for c in nb['cells']]\")",
-      "Bash(python -c \"import sqlite3; c=sqlite3.connect\\('data/papers_peanut_allergy.db'\\); print\\('peanut_allergy papers:', c.execute\\('SELECT COUNT\\(*\\) FROM papers'\\).fetchone\\(\\)[0]\\); c.close\\(\\)\")",
-      "Bash(python -c \"import sqlite3; c=sqlite3.connect\\('data/papers_water_infant.db'\\); print\\('water_infant papers:', c.execute\\('SELECT COUNT\\(*\\) FROM papers'\\).fetchone\\(\\)[0]\\); c.close\\(\\)\")",
-      "Bash(python -c \"import sqlite3; c=sqlite3.connect\\('data/papers_cow_milk.db'\\); print\\('cow_milk papers:', c.execute\\('SELECT COUNT\\(*\\) FROM papers'\\).fetchone\\(\\)[0]\\); c.close\\(\\)\")",
-      "Bash(python -c \"import json; u=json.load\\(open\\('frontend/public/universe.json'\\)\\); print\\('Galaxy nodes:', len\\(u.get\\('nodes', u.get\\('topics', []\\)\\)\\)\\); print\\('Keys:', list\\(u.keys\\(\\)\\)[:5]\\)\")",
-      "Bash(python build_data.py)",
-      "Bash(python -c \"import backend.import_openalex as m; print\\(f'Topics: {len\\(m.TOPIC_QUERIES\\)}'\\); print\\(f'Claims: {len\\(m.CLAIMS\\)}'\\); print\\(\\); [print\\(f'  {k}: {v[\\\\\"name\\\\\"]}'\\) for k,v in m.TOPIC_QUERIES.items\\(\\)]; print\\(\\); [print\\(f'  {k} -> {v[\\\\\"topic\\\\\"]}'\\) for k,v in m.CLAIMS.items\\(\\)]\")"
+      "mcp__Claude_in_Chrome__tabs_context_mcp",
+      "Skill(update-config)",
+      "Skill(update-config:*)"
     ]
   }
 }

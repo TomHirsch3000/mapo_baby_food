@@ -451,6 +451,13 @@ weight** (`paper_weight`, which moves the claim) or the **reading-order rank**
 (`importance_of`, which orders the cards), or both by different amounts. They
 are deliberately separate today ([D15](DECISIONS.md#d15)) and should stay so.
 
+**Partly settled by [D25](DECISIONS.md#d25).** The gate is decided: `netSupport`
+draws only from `stance` on `direct` and `indirect`, and `stated_position` never
+enters it. What remains open is the *graded* question inside that gate — whether
+`indirect` is discounted relative to `direct`, by how much, and whether the same
+factor applies to `importance_of` (reading order) as to `paper_weight` (verdict
+weight). D15 keeps those two separate and D25 does not change that.
+
 **Blocked by:** 1e. There is nothing to discount until the screen pass fills the
 enum.
 
@@ -471,13 +478,106 @@ reading". Small, and only worth doing when the screen pass changes what
 
 ---
 
+### 19. There is no way to add a claim to the map
+
+`CLAIMS` in `backend/claims.py` is a hand-edited literal, and adding an entry is
+only the first step: the claim then needs `import_claims.py` to collect for it,
+`evaluate_claims.py` to judge it, and a topic image if it opens a new group.
+Nothing sequences that, so a new claim is a multi-command ritual that has to be
+remembered correctly, and a half-completed one leaves a claim on the map with
+zero papers and no signal that it is unfinished rather than unstudied.
+
+This became blocking on 2026-08-31, when `responsive_interaction` and
+`motor_cognitive_link` were dropped for being unfalsifiable (see
+`gold/dropped_claims.md`). Rewriting rather than deleting them is the right
+answer, and there is no path that does it.
+
+**Wanted:** one command that takes a claim key, validates the registry entry,
+collects, evaluates and exports — resumable, and honest about which stage a
+claim has reached. `--counts-only` already proves the cheap-sizing step works.
+
+**Note also:** dropping a claim currently orphans its `claim_papers` rows rather
+than removing them. That is deliberate (the OpenAlex spend is not recoverable)
+but it means row counts in the DB drift above the registry, and nothing says so.
+
+---
+
+### 20. Measured on 2026-08-31, against the full corpus
+
+Numbers used above were estimates. Re-measured over all 6,672 abstracts in
+`claims.db`:
+
+| | count | share |
+|---|---|---|
+| longer than the 1,800-char prompt cut | 2,295 | **34.4%** |
+| ...whose CONCLUSIONS section falls past the cut | 437 | **6.5%** |
+| ends mid-sentence (no terminal punctuation) | 250 | 3.7% |
+| copyright / licence boilerplate in the text | 33 | 0.5% |
+| very short (< 200 chars) | 30 | 0.4% |
+| reference-link markup leaking into the text | 1 | 0.0% |
+
+A third of abstracts are cut at all; 437 papers have their finding severed
+before the model ever reads it. That is the one worth fixing — raising the cut
+costs context window, but a conclusion-aware truncation (keep the head and the
+CONCLUSIONS block, drop the methods in between) costs nothing.
+
+**But it is not what is driving the contested gold rows.** Across controversy
+bands the truncation rate runs 33% / 36% / 47% / 22% — no pattern. Real problem,
+wrong suspect for the current disagreements.
+
+The reference-markup case is a single paper (`n=16` in the gold set, a BMJ
+Evidence-Based Nursing abstract ending in `[3]: /lookup/external-ref?...`). Worth
+a two-line strip in `openalex.py`, not worth a project.
+
+---
+
+### 21. `bakeoff.py`'s `decomposed` is 1e, not 1c
+
+Named on the assumption they were the same thing. They are not, and the
+distinction matters:
+
+- **1e** — the screen/stance split ([D22](DECISIONS.md#d22), now
+  [D25](DECISIONS.md#d25)). Asks *does this paper bear on the claim?* This is
+  what is wired in and measured.
+- **1c** — the polarity decomposition. Model reports `effect`,
+  `exposure_polarity`, `outcome_polarity`; stance is computed **in Python**
+  against a per-claim `claim_sign`. Asks *which way does it point?* **Unbuilt.**
+
+Only 1c addresses the complement-exposure failure, because it takes the logical
+flip away from the model entirely. This is why the `complement` stratum did not
+move when the two-call screen was measured: 43% under one call, 43% under two.
+Nothing in 1e was ever aimed at it.
+
+Rename the registry entry to `screened` when 1c lands, so the two can be
+measured side by side without the names colliding.
+
+---
+
+### 22. The hardware assumption in 1b is wrong for the Windows machine
+
+1b reads "Hardware caps local at ~20B (16 GB GPU) or ~27B (24 GB Mac)". The
+Windows laptop has an **RTX 4050 with 6 GB of VRAM**, not 16. Measured there:
+
+- `qwen3:8b` (5.2 GB) is the largest model that fits fully on the card
+- Ollama's own fit estimator leaves ~2 GB unused and spills 25% of layers to
+  CPU, which drops throughput from 35 tok/s to 15.6 — pinned via
+  `backend/Modelfile.qwen3-8b-gpu` plus `OLLAMA_FLASH_ATTENTION=1` and
+  `OLLAMA_KV_CACHE_TYPE=q8_0`
+- a full 7,769-pair pass measures **32.6 h** one-call, **74.1 h** two-call
+
+`gpt-oss:20b` needs ~13 GB and would run mostly in system RAM on a machine with
+15.7 GB total. It is not reachable here, so bake-off cells 2-4 as written in
+`gold/README.md` need rethinking rather than running.
+
+---
+
 ## Found while labelling the gold set (2026-08-29)
 
 These came out of hand-labelling and are not in the sections above. Both are
 P0-adjacent: they are about the model not receiving what it needs, which is
 upstream of any prompt or model choice.
 
-### 10. Abstracts are truncated at 1,800 characters, and 8.7% lose their conclusion
+### 10. Abstracts are truncated at 1,800 characters, and 6.5% lose their conclusion
 
 `evaluate_claims.py` cuts every abstract at 1,800 characters before the model
 sees it. Measured over the corpus:

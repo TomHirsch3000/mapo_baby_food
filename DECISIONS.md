@@ -1105,3 +1105,71 @@ the same thing twice.
 **What would change our mind:** evidence that readers want the newest work
 first regardless of uptake — which would be an argument for a *year filter*,
 still not for a recency term in a reading-order rank.
+
+---
+
+## D25 — Where a paper's posture toward a claim is recorded
+
+**2026-08-31 · decided · amends [D22](#d22)**
+
+[D22](#d22) gates stance behind the screen: `framework` and `background` papers
+stop, are recorded, and are never evaluated. Labelling the gold set showed that
+this throws away something real.
+
+Two rows made it concrete. A 2023 narrative review that recommends introducing
+egg early presents no data and tests nothing — but it plainly treats the claim
+as settled. An adherence survey asking whether caregivers follow back-to-sleep
+guidance measures caregiver behaviour, not SIDS risk by position — but it only
+makes sense if the guidance is correct. Under D22 both are `background`, both
+get "does not test", and the posture is lost.
+
+**Decision: a third axis, `stated_position`, asked of every pair in the screen
+call.**
+
+| Axis | Values | Asked in | Applies to |
+|---|---|---|---|
+| `relevance` | direct / indirect / framework / background | screen | every pair |
+| `stated_position` | endorses / disputes / none | screen | every pair |
+| `stance` | supports / refutes / mixed / neutral | stance call | direct + indirect only |
+
+**`netSupport` draws only from `stance` on `direct` and `indirect`.
+`stated_position` never enters it.** That rule is the point of the decision, not
+a detail of it.
+
+**Because a paper that assumes a claim is not evidence for it.** An adherence
+survey inherits the belief it measures compliance with; a guideline relays a
+conclusion someone else reached. Folding either into `netSupport` would make the
+map argue that the science supports back-to-sleep partly *because papers assume
+it does*. The gate is a guard against the map citing its own premises.
+
+**What it buys, having been kept out of the arithmetic.** The count becomes
+displayable on its own terms: *"14 papers treat this claim as settled."* That is
+a consensus signal, not an evidence signal, and the two are worth telling apart —
+a claim can be well-evidenced and disputed, or thinly-evidenced and universally
+assumed. Today both states are invisible inside `neutral`.
+
+**It costs nothing to collect.** `stated_position` is one more field on the
+screen call, which already runs for every pair. Measured on the gold set the
+screen averages 1.65 calls/pair; this does not change that. The alternative
+considered — a separate posture call — was rejected on that basis alone.
+
+**It also makes the screen diagnosable.** Under D22 a mis-tiered paper's stance
+is never observed, so a wrong verdict cannot be attributed to the screen or to
+the stance call. With a position recorded for every pair, the two failures
+separate. On the 57-row gold set the screen currently scores 41% on the
+four-way tier and 63% on the coarse bears-on-the-claim call, so knowing which
+half is wrong is not a luxury.
+
+**Superseded framing.** D22's third consequence — "background papers never reach
+the stance question, so nothing they might have said can leak into a verdict" —
+still holds, and is now enforced by the `netSupport` gate rather than by silence.
+The screen records the posture; the arithmetic ignores it.
+
+**Does not address polarity.** This decision is about relevance and posture only.
+The complement-exposure failure that inverts claims is a separate problem, fixed
+by BACKLOG 1c (stance computed in Python from `claim_sign`), and nothing here
+moves it. Measured: the complement stratum sits at 43% under the two-call screen,
+unchanged from the one-call baseline.
+
+---
+
