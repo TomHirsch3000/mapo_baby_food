@@ -6,18 +6,24 @@ Branch: `claim-schema-and-bakeoff`, pushed. Both machines are on it.
 
 ---
 
-## Running right now — leave it alone
+## Both halves PAUSED — nothing is running
 
-| machine | model | shard | progress | eta |
-|---|---|---|---|---|
-| Windows | `qwen3-8b-gpu` | `shards/windows.txt` — 39 claims | **1,375 / 3,783 (36%)** | ~10 h |
-| Mac | `qwen3:8b` | `shards/mac.txt` — 39 claims | starting | ~10-15 h |
+| machine | model | shard | progress |
+|---|---|---|---|
+| Windows | `qwen3-8b-gpu` | `shards/windows.txt` — 39 claims | **1,488 / 3,783 (39%)** |
+| Mac | `qwen3:8b` | `shards/mac.txt` — 39 claims | **1,080 / 3,784 (29%)** |
 
-**Do not close the Windows laptop's lid.** Sleep is disabled by a background
-watcher that restores the original settings (standby 900, hibernate 10800) when
-the pass ends, and leaves the machine on. Lid action was not readable on this
-machine so it could not be overridden — closing the lid still suspends and kills
-the run.
+Stopped deliberately on the evening of 2026-09-02, not crashed. The evaluator
+commits per row, so at most one pair was lost. Both halves are exported to
+`data/verdicts/*.csv` and pushed, so the progress survives even if a database is
+lost.
+
+Power settings were restored by hand (standby 900, hibernate 10800, AC and DC) —
+force-killing the keep-awake watcher skips its `finally` block, so a future
+watcher should be stopped gracefully or the settings checked afterwards.
+
+**Roughly 2,300 windows pairs and 2,700 mac pairs remain**, about 9 h and 11 h
+respectively at 15 s/pair.
 
 The pass commits per row, so an interruption loses at most one pair.
 
