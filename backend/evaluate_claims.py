@@ -70,18 +70,41 @@ CLAIM: "{claim}"
 PAPER TITLE: {title}
 ABSTRACT: {abstract}
 
-Decide whether this paper's findings SUPPORT or REFUTE the CLAIM.
+Decide whether this paper's findings SUPPORT or REFUTE the CLAIM, and how
+directly the paper bears on it.
 
 Respond with ONLY this JSON, filling the fields in order:
 {{
-  "finding": "<what the paper actually concluded, in your own words, max 20 words>",
+  "finding": "<what the paper actually concluded, in your own words, max 25 words. Keep any caveat that changes the reading - a result that held in one analysis but not another is not the same as a result>",
   "direction": "<does that conclusion agree or disagree with the CLAIM? answer 'agrees', 'disagrees', 'both', or 'does not test it'>",
   "stance": "supports | refutes | neutral | mixed",
-  "confidence": <0-100 integer>,
-  "summary": "<one sentence, max 25 words, on what this paper found about the claim>",
-  "evidence_strength": "strong | moderate | limited | mixed",
+  "alignment": <0-100 integer>,
   "study_type": "<meta-analysis | rct | cohort | case-control | cross-sectional | review | case-report | other>"
 }}
+
+About "alignment" — how well does THIS paper answer THIS claim?
+
+This is not about how good the study is. A large, careful trial of the wrong
+question scores LOW; a small study of exactly the right question scores HIGH.
+Study quality is `study_type`, and it is asked separately.
+
+- 90-100  The paper measured the claim's exposure, in the claim's population, at
+          the claim's age, and reported the claim's outcome. It is answering
+          this question.
+- 60-89   Close, but generalised or shifted. The claim is about phones and the
+          paper studies screens as a whole; the claim is about 6-month-olds and
+          the paper studies toddlers; the outcome is a reasonable proxy.
+          Informative about the claim without settling it.
+- 30-59   The same subject area, a different question. Shares a topic, a
+          population or a keyword, but what it measured is not what the claim
+          asserts.
+- 0-29    Does not bear on the claim at all. It arrived in this corpus by
+          retrieval accident, or discusses the topic without testing anything
+          the claim says.
+
+Judge alignment from what the paper MEASURED, not from whether you agree with
+what it found. A paper that flatly contradicts the claim, having measured
+exactly the right thing, scores 90-100.
 
 Rules:
 - "agrees"        -> stance "supports"
@@ -96,19 +119,26 @@ Rules:
 - Read negations carefully. Phrases like "no association", "was not a risk factor",
   "no significant difference", "did not reduce" mean the paper DISAGREES with a
   claim that asserts an effect. Matching keywords is NOT agreement.
-- A paper that only describes the topic, or is inconclusive, is "neutral" with low confidence.
+- A paper that only describes the topic, or is inconclusive, is "neutral". Its
+  alignment is whatever the scale above says - low if it is off-topic, high if
+  it tested the claim and could not tell. Those are different papers and should
+  not share a number.
 - Judge only from this abstract. Do not use outside knowledge.
-- evidence_strength: strong = meta-analysis/large RCT; moderate = smaller RCT or prospective cohort; limited = cross-sectional, case-control, small or preliminary; mixed = conflicting findings.
 
 Example of a MIXED paper:
 CLAIM: "Screen media should be avoided before 18-24 months"
 Abstract concludes: "More screen time was associated with poorer language, but educational programming and co-viewing were associated with better language."
-{{"finding": "Quantity of screen use harmed language; quality of screen use helped it", "direction": "both", "stance": "mixed", "confidence": 85, "summary": "More screen time tracked worse language, but educational and co-viewed content tracked better language.", "evidence_strength": "strong", "study_type": "meta-analysis"}}
+{{"finding": "Quantity of screen use harmed language; quality of screen use helped it", "direction": "both", "stance": "mixed", "alignment": 85, "study_type": "meta-analysis"}}
 
-Example of a REFUTING paper:
+Example of a REFUTING paper, measuring exactly the right thing:
 CLAIM: "Vitamin C prevents the common cold"
 Abstract concludes: "Regular vitamin C supplementation had no effect on common cold incidence."
-{{"finding": "Vitamin C supplementation did not reduce cold incidence", "direction": "disagrees", "stance": "refutes", "confidence": 90, "summary": "Found no effect of vitamin C on cold incidence.", "evidence_strength": "strong", "study_type": "meta-analysis"}}
+{{"finding": "Vitamin C supplementation did not reduce cold incidence across 29 trials", "direction": "disagrees", "stance": "refutes", "alignment": 95, "study_type": "meta-analysis"}}
+
+Example of LOW alignment, so there is no stance to take:
+CLAIM: "Placing infants on their back to sleep reduces the risk of SIDS"
+Abstract: a hypothesis paper proposing cumulative prenatal stress as a cause of SIDS, which never mentions sleep position.
+{{"finding": "Proposes cumulative stress from in utero onward as a SIDS mechanism", "direction": "does not test it", "stance": "neutral", "alignment": 15, "study_type": "review"}}
 """
 
 
@@ -130,6 +160,11 @@ def ensure_schema(conn):
         # every verdict self-describing, and a later comparison honest.
         ("evaluated_by", "TEXT"), ("prompt_version", "TEXT"),
         ("claim_text_used", "TEXT"),
+        # Replaces `confidence`, which is kept rather than dropped so the rows
+        # judged before 2026-09-02 stay readable. Nothing should read both: a
+        # row has one or the other depending on prompt_version, and mixing them
+        # would silently compare a defined number with an undefined one.
+        ("alignment", "INTEGER"),
     ]:
         if name not in cols:
             conn.execute(f"ALTER TABLE claim_papers ADD COLUMN {name} {decl}")
@@ -164,21 +199,26 @@ def validate(data):
     if stance is None:
         return None
 
+    # `alignment` replaces the old `confidence`, which had no definition anywhere
+    # in the prompt and turned out to be a restatement of the stance: of 1,014
+    # verdicts at exactly confidence=30, 1,013 were neutral. It was feeding
+    # paper_weight a 2x multiplier as though it were an independent signal.
+    #
+    # Measured against the gold set's hand-labelled relevance tiers, alignment
+    # runs direct 84 / indirect 70 / framework 45 / background 32, tau +0.77.
+    # Read that with care: it is heavily confounded with whether the model took
+    # a stance at all (directional verdicts average 81, neutrals 36), and among
+    # the papers it does judge, `direct` and `indirect` score identically. So it
+    # is a better weight than `confidence` was, and it is NOT the independent
+    # relevance judgement D25 asks for. That still needs its own question.
     try:
-        confidence = max(0, min(100, int(float(data.get("confidence", 50)))))
+        alignment = max(0, min(100, int(float(data.get("alignment", 50)))))
     except (TypeError, ValueError):
-        confidence = 50
-
-    strength = str(data.get("evidence_strength", "")).strip().lower()
-    strength = next((s for s in STRENGTHS if s in strength), "limited")
-
-    summary = str(data.get("summary") or "").strip()
+        alignment = 50
 
     return {
         "stance": stance,
-        "confidence": confidence,
-        "stance_summary": summary[:400],
-        "evidence_strength": strength,
+        "alignment": alignment,
         "study_type": str(data.get("study_type") or "other").strip().lower()[:40],
         "finding": str(data.get("finding") or "").strip()[:400],
         "direction": direction[:60],
@@ -267,13 +307,11 @@ def run(conn, client, model, claim_keys, limit=None, force=False, stale=False,
 
         conn.execute("""
             UPDATE claim_papers
-               SET stance = ?, confidence = ?, stance_summary = ?,
-                   evidence_strength = ?, study_type = ?, finding = ?, direction = ?,
-                   evaluated_at = datetime('now'),
+               SET stance = ?, alignment = ?, study_type = ?,
+                   finding = ?, direction = ?, evaluated_at = datetime('now'),
                    evaluated_by = ?, prompt_version = ?, claim_text_used = ?
              WHERE claim_key = ? AND paperId = ?
-        """, (result["stance"], result["confidence"], result["stance_summary"],
-              result["evidence_strength"], result["study_type"],
+        """, (result["stance"], result["alignment"], result["study_type"],
               result["finding"], result["direction"],
               model, prompt_version, claim_text, claim_key, paper_id))
         done += 1
@@ -286,7 +324,7 @@ def run(conn, client, model, claim_keys, limit=None, force=False, stale=False,
         rate = (time.time() - started) / i
         eta = rate * (len(rows) - i)
         print(f"  [{i}/{len(rows)}] {result['stance']:8s} "
-              f"({result['confidence']:3d}%) {result['evidence_strength']:8s} "
+              f"(align {result['alignment']:3d}) "
               f"{(title or '')[:56]:56s} ETA {eta/60:.0f}m")
 
     conn.commit()

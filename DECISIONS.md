@@ -1173,3 +1173,88 @@ unchanged from the one-call baseline.
 
 ---
 
+
+## D26 — What the third term in a paper's weight measures
+
+**2026-09-02 · decided**
+
+`paper_weight` is design x impact x a third term. That third term was
+`confidence`, which the prompt requested as `<0-100 integer>` and never defined.
+The only steer anywhere was one line saying an inconclusive paper is "neutral
+with low confidence", and the model followed it: **of the 1,014 verdicts at
+exactly confidence=30, 1,013 were neutral.** The field restated the stance while
+carrying a 2x multiplier as though it were independent evidence.
+
+**Decision: replace it with `alignment` — how well this paper answers THIS
+claim — defined on a four-band scale in the prompt.** A large careful trial of
+the wrong question scores low; a small study of exactly the right question scores
+high. Study quality is `study_type`, and is asked separately.
+
+**Measured on the gold set** against the hand-labelled relevance tiers:
+
+| gold tier | n | mean alignment |
+|---|---|---|
+| direct | 8 | 84 |
+| indirect | 14 | 70 |
+| framework | 13 | 45 |
+| background | 21 | 32 |
+
+Monotonic, Kendall tau-b **+0.77**. Stance accuracy is unchanged: 16/24, the
+same as the prompt it replaces.
+
+**Read that number with the confound, which is real.** Alignment is heavily
+entangled with whether the model took a stance at all — directional verdicts
+average 81, neutrals 36, and only 3 of 37 neutrals reach the lowest directional
+value. Among the papers it does judge, `direct` and `indirect` score
+**identically at 84**. So most of the +0.77 comes from gold's direct/indirect
+papers being the ones it answers, not from an independent reading of relevance.
+
+**Consequences, stated so they are not discovered later:**
+
+- A `netSupport` gate on alignment does nothing. Every paper casting a
+  directional vote scores 70 or above, including the three the gold set says are
+  off-topic. Tested at a threshold of 60: zero bad votes removed.
+- It does not decompose `neutral` cleanly either — "tested it, found nothing"
+  averages 52 against "not about this" at 33, with heavy overlap.
+- **This is therefore NOT [D25](#d25)'s relevance tier.** That still needs its own
+  question, asked before the model knows whether it can take a stance. `alignment`
+  is a better weight than `confidence` was; it is not a relevance judgement.
+
+**Two fields removed at the same time, both provably dead:**
+
+- **`summary`** duplicated `finding`, and was the worse copy. `finding` is
+  written before the stance and reports what the paper says; `summary` is written
+  after and is already translated onto the claim. On the corpus it drops the
+  caveats that change a reading ("...but not intention-to-treat" vanishing) and
+  sometimes performs the complement flip in prose — which is the reasoning step
+  we most want to see rather than have done for us. `finding` now serves both.
+- **`evidence_strength`** fed nothing but an unrendered display tally.
+  `STRENGTH_WEIGHT` was defined and never used; `paper_weight` has taken its
+  design signal from `design.py` since that module was written, precisely
+  because the model's own strong/moderate/limited label conflated design with
+  sample size.
+
+Five fields where there were seven, and the prompt costs less to run.
+
+**A pre-change row keeps its `confidence` and is given `NEUTRAL_ALIGNMENT` (50)
+in the arithmetic.** The two columns are different quantities and averaging them
+into one number would compare a defined value against an undefined one. Neutral
+means such a row neither helps nor hurts, and nothing pretends the old figure
+meant something. `prompt_version` records which prompt produced each row.
+
+**Found while making this change: BACKLOG P0 item 2, fixed.** `paper_weight` was
+called with `evidence_strength` where `study_type` belongs, so `design.rank_of()`
+was handed "strong"/"moderate"/"limited", matched none of them, and returned the
+UNKNOWN rank of 0.30 — for every paper card, whatever the design. The
+claim-level aggregate used the right argument, so a card and the map it sits on
+disagreed by construction.
+
+**Not done here.** The idea that `stated_position` could fall out of
+`direction` x `alignment` — a guideline scoring "agrees" at alignment 15 being an
+endorsement without evidence — requires dropping the "does not test it -> neutral"
+rule, which is a fourth change to an already-changed prompt. Three prompt
+redesigns have lost outright; these two were adopted only because they measured
+as a tie plus two dead fields removed. The fourth waits for its own measurement.
+
+---
+

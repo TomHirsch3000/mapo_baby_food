@@ -46,16 +46,32 @@ STRENGTH_WEIGHT = {"strong": 3.0, "moderate": 2.0, "mixed": 1.5, "limited": 1.0}
 DEFAULT_WEIGHT = 1.0
 
 
-def paper_weight(study_type, citations, confidence):
-    """Quality x impact x how sure the evaluator was.
+# A row judged before 2026-09-02 has `confidence`, which had no definition in
+# the prompt and measured only whether the stance was neutral. A row judged
+# after has `alignment`, which measures how well the paper answers the claim.
+# They are not the same quantity and must not be averaged into one column, so a
+# pre-change row gets the neutral value instead of its old number: it neither
+# helps nor hurts, and nothing pretends the old figure meant something.
+NEUTRAL_ALIGNMENT = 50
+
+
+def paper_weight(study_type, citations, alignment):
+    """Quality x impact x how well the paper answers THIS claim.
 
     Quality is the study DESIGN, ranked on an evidence hierarchy - not the
     model's own strong/moderate/limited label, which conflated design with
     sample size and ranked position papers above meta-analyses. See design.py.
+
+    The third term was `confidence` until 2026-09-02 and did nothing useful:
+    1,013 of the 1,014 verdicts at confidence=30 were neutral, so it restated
+    the stance while carrying a 2x multiplier as though it were independent.
+    `alignment` at least measures a different thing - though see D26, it is
+    still confounded with whether the model took a stance at all.
     """
     base = 1.0 + 2.0 * design.rank_of(study_type)     # 1.0 .. 3.0, as before
     impact = 1.0 + math.log10(1 + max(0, citations or 0))
-    certainty = 0.5 + 0.5 * ((confidence if confidence is not None else 50) / 100)
+    a = alignment if alignment is not None else NEUTRAL_ALIGNMENT
+    certainty = 0.5 + 0.5 * (a / 100)
     return base * impact * certainty
 
 
@@ -70,7 +86,7 @@ def claim_rows(conn, claim_key):
         SELECT p.paperId, p.title, p.abstract, p.year, p.publicationDate,
                p.cited_by_count, p.all_author_names, p.first_author_name,
                p.all_institution_names, p.venue, p.doi, p.url,
-               cp.stance, cp.confidence, cp.stance_summary,
+               cp.stance, cp.confidence, cp.alignment, cp.stance_summary,
                cp.evidence_strength, cp.study_type, cp.keyword_score,
                cp.finding, cp.direction,
                s.impact AS journal_impact, s.h_index AS journal_h_index,
@@ -152,7 +168,7 @@ def summarise_claim(conn, claim_key, rows, openalex_count):
             continue
         counts[stance] += 1
         weights[stance] += paper_weight(r["study_type"], r["cited_by_count"],
-                                        r["confidence"])
+                                        r["alignment"])
         if r["evidence_strength"] in strength_mix:
             strength_mix[r["evidence_strength"]] += 1
 
@@ -333,8 +349,14 @@ def build_paper_node(row):
         # badge says what it says, and catch it when the two disagree.
         "finding": (row["finding"] if "finding" in row.keys() else "") or "",
         "direction": (row["direction"] if "direction" in row.keys() else "") or "",
-        "weight": round(paper_weight(row["evidence_strength"], row["cited_by_count"],
-                                     row["confidence"]), 2),
+        # BACKLOG item 2: this passed `evidence_strength` where `study_type`
+        # belongs, so design.rank_of() was handed "strong"/"moderate"/"limited",
+        # matched none of them, and returned the UNKNOWN rank of 0.30 for every
+        # card. The number shown on a paper card was therefore the same design
+        # score whatever the design, while the claim-level aggregate above used
+        # the right one - so the card and the map disagreed by construction.
+        "weight": round(paper_weight(row["study_type"], row["cited_by_count"],
+                                     row["alignment"]), 2),
         # Where it was published, and how that journal performs. OpenAlex's
         # 2yr_mean_citedness is the same quantity a journal impact factor
         # measures - mean citations over the prior two years - and unlike the
