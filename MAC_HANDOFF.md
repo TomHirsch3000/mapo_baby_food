@@ -206,6 +206,79 @@ evidence can refute them). Comparing an old verdict with a new one on those
 claims is comparing answers to different questions, and only `claim_text_used`
 makes that visible. Any new pass must write all three.
 
+## Resuming a half-finished pass — `--stale` is not safe on this database
+
+**Symptom if you get this wrong: the run reports success having done almost
+nothing, and most of the shard stays on the old model.**
+
+`--stale` resumes on `direction IS NULL`, and the comment above it in
+`evaluate_claims.py` explains why that is sound: only the current evaluator
+writes `direction`, so a row holding one has been judged under the present
+taxonomy. That is not true of this database. The Aug-26 mistral pass populated
+`direction` on **2,703 of the Mac shard's 3,784 rows** — values like `agrees`,
+`disagrees`, `both`. `--stale` reads all of them as done.
+
+Measured on the paused Mac shard at 1,080/3,784 complete:
+
+| resume flag | pairs it would run | outcome |
+|---|---|---|
+| `--stale` | **1** | 2,703 rows silently left on mistral, run exits "complete" |
+| `--force` | 3,784 | correct, but redoes ~6 h of finished work |
+| reset + `--stale` | **2,704** | correct, keeps the 1,080 already done |
+
+The reset clears `direction` on rows the current pass has not itself written,
+which restores the invariant the flag assumes:
+
+```sql
+UPDATE claim_papers SET direction = NULL
+ WHERE claim_key IN (<the shard>)
+   AND (evaluated_by IS NULL OR evaluated_by != 'qwen3:8b');
+```
+
+`backend/resume_mac_shard.sh` does this and then resumes under `caffeinate`.
+Verified on a throwaway copy before use: 2,704 to run, 1,080 preserved, 0 rows
+of the Windows shard touched. Take a copy first regardless — the run in progress
+was backed up to `data/claims.pre-resume-backup.db`.
+
+**The same trap applies to the Windows half.** Its 9 rows with a null
+`direction` are pre-existing — papers mistral never judged — so a `--stale`
+resume there would run those 9 and skip the rest of the shard.
+
+The durable fix is for the resume filter to key off `evaluated_by != <model>`
+rather than `direction IS NULL`, which asks the question actually being asked:
+"has *this* model judged this row?". That is left alone here on purpose — the
+Windows pass is mid-flight and changing row selection under it is not worth the
+risk. Worth doing once both halves land.
+
+## Should the database live in git?
+
+Asked, measured, and the answer is **not the `.db`, but yes to the verdicts**.
+
+| artifact | size | in git |
+|---|---|---|
+| `data/claims.db` | 25.9 MB | 7.5 MB per commit, no delta between versions |
+| └ `papers` (abstracts) | 20.5 MB (79%) | static — never changes between passes |
+| └ `claim_papers` (verdicts) | 3.2 MB (12%) | the only table a pass rewrites |
+| `claim_papers` as sorted CSV | 2.6 MB | **0.54 MB, and deltas between passes** |
+
+Two reasons the raw file is the wrong thing to commit. It is binary, so every
+pass stores a fresh ~7.5 MB blob forever rather than a diff — and 79% of that
+weight is abstracts that never change. Worse, **two machines committing one
+binary cannot merge**: git offers no resolution but "take mine or take theirs",
+and either choice discards a shard wholesale. That breaks the exact pattern this
+document is built on.
+
+A sorted CSV of `claim_papers` inverts both problems. It is text, so git stores
+the delta; and because the shards touch **disjoint `claim_key` sets**, the two
+halves land in non-overlapping regions of a file sorted by that key, so git
+merges them without a conflict. That is the "attach-and-copy rather than a
+reconciliation" property from the merge section, obtained for free — and it
+retires the awkwardness that `data/*.db` is gitignored so "the Mac will not get
+verdicts from git".
+
+Not done here: it needs an export/import pair and a decision about whether the
+CSV or the DB is authoritative. Flagged, not built.
+
 ## What is NOT done
 
 - **`build_claims_data.py` has not been run** on the new verdicts. Nothing is
