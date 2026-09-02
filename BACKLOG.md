@@ -629,10 +629,25 @@ Three explanations, not yet separable:
 1. **It is correct.** These particular claims are well-supported and the old
    contested reading was inversion error. The gold set is consistent with this:
    qwen3 scored 75% on the `refutes` stratum, so it demonstrably can say refutes.
-2. **qwen3 is refutes-averse.** 37 refutes in 1,353 pairs is a strong prior. The
-   gold set holds only ~5 scoreable `refutes` rows — far too few to have caught
-   a systematic bias of this size, which is a gap in the gold set as much as a
-   question about the model.
+2. **The model is refutes-averse — now the leading explanation.** 37 refutes in
+   1,353 pairs is a strong prior on its own. What settles it is the Mac's
+   bake-off of `gpt-oss:20b`, run the same day: a larger and more careful model
+   answered **`neutral` on 47 of 57 gold pairs**, reaching "does not test it"
+   through real reasoning about a real extracted finding. It scored 46% overall
+   and 29% on complement — below the mistral pass it would have replaced —
+   purely by declining to take a position.
+
+   So neutral-aversion is not a qwen3 quirk; it is what a careful judge does on
+   this task, and qwen3 is a milder case of the same thing. That reframes the
+   908 neutrals: some fraction is correct relevance filtering, and some is a
+   judge that will not commit. The two are not currently separable, and nothing
+   in the pipeline distinguishes "this paper does not test the claim" from "I
+   would rather not say" — which is precisely the distinction D25's `relevance`
+   tier was designed to make.
+
+   The gold set holds only ~5 scoreable `refutes` rows, far too few to have
+   caught a bias this size. That is a gap in the gold set as much as a question
+   about the model.
 3. **Selection.** Rows are processed best-first by keyword score, so the
    best-matched papers are judged first and may skew supportive. The contested
    claims may simply not be done yet.
