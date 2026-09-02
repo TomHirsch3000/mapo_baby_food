@@ -665,6 +665,22 @@ two claims are read.
 enough to detect a model that never says no, and that is exactly the failure this
 pass may have introduced.
 
+**First data on the test, from the Mac shard (paused at 1,080/3,784).**
+`bilingual_no_delay` is 14/118 judged, and those 14 are **4 refutes, 3 mixed,
+1 supports, 6 neutral**. A 29% refutes rate on the claim written to be refutable,
+against 2.8% (30/1,080) across the shard as a whole — an order of magnitude
+apart, on the claim where the difference was predicted.
+
+That is early and small, but it points away from explanation 2: a model that
+cannot say no does not say it ten times more often on precisely the claim the
+evidence should refute. Explanation 3 gains from the same fact — if best-first
+selection is what suppresses refutes elsewhere, a claim whose best-matched
+papers genuinely refute it is exactly where refutes would surface first.
+
+`crawling_not_required` is 0/10 and has nothing to say yet. Both need their
+remaining rows before this is settled; the shard-wide refutes rate is the number
+to re-read when it finishes, not this one.
+
 ---
 
 ## Found while labelling the gold set (2026-08-29)
