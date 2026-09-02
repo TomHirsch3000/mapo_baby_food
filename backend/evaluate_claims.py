@@ -214,11 +214,18 @@ def run(conn, client, model, claim_keys, limit=None, force=False, stale=False,
         prompt_version="current"):
     ensure_schema(conn)
 
-    # `direction` is only ever written by the current evaluator, so a row that
-    # has one has been judged under the present taxonomy and a row that has not
-    # is either untouched or left over from an older one. That makes --stale the
-    # resumable form of --force: kill it halfway, run it again, and it resumes
-    # exactly where it stopped instead of starting the whole corpus over.
+    # --stale resumes on `direction`, on the reasoning that only the current
+    # evaluator writes it, so a row holding one has been judged under the present
+    # taxonomy. CHECK THAT BEFORE TRUSTING IT ON A GIVEN DATABASE. On the Aug-26
+    # copy the mistral pass had already written `direction` (agrees/disagrees/
+    # both) to 2,703 of the Mac shard's 3,784 rows, so --stale resumed 1 row
+    # instead of 2,704 and exited reporting success with most of the shard still
+    # on the old model. Clearing `direction` where evaluated_by is not the model
+    # being run restores the invariant; see MAC_HANDOFF.md and
+    # backend/resume_mac_shard.sh. The real fix is to select on
+    # `evaluated_by != model` - the question actually being asked - which is left
+    # until both halves of the 2026-09-02 pass have landed rather than changing
+    # row selection under a run in flight.
     if force:
         stance_filter = ""
     elif stale:
