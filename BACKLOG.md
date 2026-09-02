@@ -665,6 +665,38 @@ two claims are read.
 enough to detect a model that never says no, and that is exactly the failure this
 pass may have introduced.
 
+### 23a. Largely resolved — it was selection, not aversion
+
+Re-read on 2026-09-02 evening with both shards merged, 2,548 pairs judged
+(windows 1,466, mac 1,080). The alarming reading was an artefact of how few
+claims had got far enough, exactly as explanation 3 proposed.
+
+| | yesterday, 19 claims | now, 43 claims |
+|---|---|---|
+| net **negative** (refuted) | 0 | **2** |
+| 0 to +0.49 (contested) | 0 | **4** |
+| +0.50 to +0.99 | 11 | 21 |
+| +1.00 (no refutes at all) | 8 | 16 |
+
+- `blw_choking` sits at **-1.00** — 0 supports, 6 refutes. The map can refute.
+- `bilingual_no_delay` sits at **-0.60**. That is the claim rewritten from a
+  negation into a positive assertion *specifically so evidence could refute it*,
+  and it is being refuted. The designed test passes.
+
+Rows are processed best-first by keyword score, so the earliest-finished claims
+are the ones whose best-matched papers agree with them. Reading a refutes rate
+off a third of a pass measures the ordering, not the model.
+
+**What is still true and still worth watching:** the corpus-wide refutes rate is
+2.7% against mistral's 20.2%, and neutral has gone from 31% to 68%. Much of that
+drop is correct — on the gold set mistral gave hard verdicts to 22 of 32
+off-topic papers and qwen3 to 2, and those now land in `neutral`, which
+netSupport already excludes. But "correctly declined" and "would rather not say"
+are still indistinguishable in the data, which is D25's relevance tier again.
+
+**The export is no longer blocked on this.** Finish both shards, re-read the
+distribution above, then run `build_claims_data.py`.
+
 **First data on the test, from the Mac shard (paused at 1,080/3,784).**
 `bilingual_no_delay` is 14/118 judged, and those 14 are **4 refutes, 3 mixed,
 1 supports, 6 neutral**. A 29% refutes rate on the claim written to be refutable,

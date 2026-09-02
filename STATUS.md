@@ -157,8 +157,32 @@ the evidence should make it. So refutes-aversion is no longer the leading
 explanation, and the `gpt-oss:20b` result — neutral on 47 of 57 — may say more
 about that particular model than about the task.
 
-Still early: 14 rows, and `crawling_not_required` has none yet. **The number to
-re-read when both shards finish is the shard-wide refutes rate, not this one.**
+Still early: 14 rows, and `crawling_not_required` has none yet.
+
+### Re-read with both shards merged — largely resolved (BACKLOG 23a)
+
+2,548 pairs judged, 43 claims now have enough directional verdicts to read:
+
+| | yesterday, 19 claims | now, 43 claims |
+|---|---|---|
+| net **negative** (refuted) | 0 | **2** |
+| 0 to +0.49 (contested) | 0 | **4** |
+| +0.50 to +0.99 | 11 | 21 |
+| +1.00 | 8 | 16 |
+
+`blw_choking` is at **-1.00** (0 supports, 6 refutes) and `bilingual_no_delay` at
+**-0.60** — the claim rewritten to be refutable is being refuted. **The designed
+test passes.** Yesterday's "nothing is refuted" was best-first ordering putting
+the well-supported claims first, not a model that will not say no.
+
+**The export is no longer blocked on this.** Finish both shards, re-read that
+table, then run `build_claims_data.py`.
+
+Still worth watching: corpus-wide refutes is 2.7% against mistral's 20.2%, and
+neutral 68% against 31%. Most of that drop is correct — mistral gave hard
+verdicts to 22 of 32 off-topic gold papers and qwen3 to 2 — but "correctly
+declined" and "would rather not say" remain indistinguishable in the data, which
+is D25's relevance tier again.
 
 ---
 
