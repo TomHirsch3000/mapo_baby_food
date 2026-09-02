@@ -250,34 +250,83 @@ rather than `direction IS NULL`, which asks the question actually being asked:
 Windows pass is mid-flight and changing row selection under it is not worth the
 risk. Worth doing once both halves land.
 
-## Should the database live in git?
+## Moving verdicts between the machines
 
-Asked, measured, and the answer is **not the `.db`, but yes to the verdicts**.
+Two mechanisms, doing different jobs. Both are in git; neither replaces the
+other.
 
-| artifact | size | in git |
+**`data/claims-snapshot.db` — the whole corpus, for bootstrapping.** Already
+committed, already the documented route, and better than it looks: `VACUUM INTO`
+lays pages out deterministically, so git deltas successive versions rather than
+storing a fresh copy. An earlier draft of this section claimed the opposite and
+was wrong. Refresh it with `python backend/snapshot_db.py`; a second machine
+gets the entire corpus — abstracts included — without re-importing from OpenAlex.
+
+What it cannot do is take writes from two machines at once. It is one binary
+blob at one path, so when both halves of a sharded pass commit it, git can offer
+only take-mine-or-take-theirs, and either answer discards a shard.
+
+**`data/verdicts/<shard>.csv` — the verdicts, for a pass in flight.** One file
+per file in `shards/`, partitioned exactly the way the work is, so each machine
+writes only its own and concurrent commits from both halves cannot conflict.
+
+Partitioning is the whole point, and a single sorted CSV would not have worked:
+the shards interleave alphabetically — `baby_led_weaning` (mac),
+`back_to_sleep` (windows), `background_tv` (windows), `bilingual_no_delay` (mac)
+— so both machines' edits would land inside each other's diff hunks. Splitting
+by shard is what makes the disjointness the pass already has legible to git.
+
+| artifact | size | role |
 |---|---|---|
-| `data/claims.db` | 25.9 MB | 7.5 MB per commit, no delta between versions |
-| └ `papers` (abstracts) | 20.5 MB (79%) | static — never changes between passes |
-| └ `claim_papers` (verdicts) | 3.2 MB (12%) | the only table a pass rewrites |
-| `claim_papers` as sorted CSV | 2.6 MB | **0.54 MB, and deltas between passes** |
+| `data/claims.db` | 25.9 MB | working copy, gitignored, authoritative |
+| `data/claims-snapshot.db` | 25.1 MB | whole corpus; deltas well; one writer |
+| `data/verdicts/mac.csv` | 1.27 MB | 3,784 rows; the Mac writes only this |
+| `data/verdicts/windows.csv` | 1.27 MB | 3,783 rows; Windows writes only this |
 
-Two reasons the raw file is the wrong thing to commit. It is binary, so every
-pass stores a fresh ~7.5 MB blob forever rather than a diff — and 79% of that
-weight is abstracts that never change. Worse, **two machines committing one
-binary cannot merge**: git offers no resolution but "take mine or take theirs",
-and either choice discards a shard wholesale. That breaks the exact pattern this
-document is built on.
+### What the Windows machine should do
 
-A sorted CSV of `claim_papers` inverts both problems. It is text, so git stores
-the delta; and because the shards touch **disjoint `claim_key` sets**, the two
-halves land in non-overlapping regions of a file sorted by that key, so git
-merges them without a conflict. That is the "attach-and-copy rather than a
-reconciliation" property from the merge section, obtained for free — and it
-retires the awkwardness that `data/*.db` is gitignored so "the Mac will not get
-verdicts from git".
+Nothing yet — but when its half finishes, or any time it wants to publish
+progress:
 
-Not done here: it needs an export/import pair and a decision about whether the
-CSV or the DB is authoritative. Flagged, not built.
+```sh
+git pull
+python backend/export_verdicts.py --shard windows   # -> data/verdicts/windows.csv
+git add data/verdicts/windows.csv && git commit -m "windows shard verdicts" && git push
+```
+
+To take this machine's half:
+
+```sh
+git pull
+python backend/export_verdicts.py --import data/verdicts/mac.csv --dry-run
+python backend/export_verdicts.py --import data/verdicts/mac.csv
+python backend/evaluate_claims.py --coverage
+```
+
+An import matches on `(claim_key, paperId)` and writes only the verdict columns,
+so taking the Mac half cannot disturb the Windows half. A pair in the file that
+does not exist locally is reported, not inserted — that means the corpora have
+diverged and is worth knowing rather than papering over.
+
+Round-trip is lossless bar one forced normalisation: CSV cannot distinguish an
+empty string from NULL, so a `""` returns as NULL. Verified by wiping a shard
+from a copy and restoring it — 7,767 of 7,769 rows identical, both exceptions an
+empty `stance_summary`.
+
+**Note for whoever imports first:** the Mac's `windows.csv` currently shows 0
+judged. That is not a claim about the Windows run — this machine's database is
+the Aug-26 copy, which predates the provenance columns, so it simply has no
+verdicts for that half. Windows should export its own rather than treat the
+Mac's file as authoritative for its claims.
+
+### 202 pairs belong to no shard, and that is deliberate
+
+`motor_cognitive_link` (139 pairs) and `responsive_interaction` (63) are in
+`claim_papers` but in neither shard and not in the registry: both were dropped
+on 2026-08-31 as unfalsifiable, with their papers kept on purpose
+(`gold/dropped_claims.md`). The exporter now names them, and shouts separately
+if a claim that IS still live turns up in no shard — that one would mean nothing
+is going to evaluate it.
 
 ## What is NOT done
 
