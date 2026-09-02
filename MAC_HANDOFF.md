@@ -276,12 +276,19 @@ the shards interleave alphabetically — `baby_led_weaning` (mac),
 — so both machines' edits would land inside each other's diff hunks. Splitting
 by shard is what makes the disjointness the pass already has legible to git.
 
-| artifact | size | role |
-|---|---|---|
-| `data/claims.db` | 25.9 MB | working copy, gitignored, authoritative |
-| `data/claims-snapshot.db` | 25.1 MB | whole corpus; deltas well; one writer |
-| `data/verdicts/mac.csv` | 1.27 MB | 3,784 rows; the Mac writes only this |
-| `data/verdicts/windows.csv` | 1.27 MB | 3,783 rows; Windows writes only this |
+| artifact | on disk | cost in git | role |
+|---|---|---|---|
+| `data/claims.db` | 25.9 MB | — | working copy, gitignored, authoritative |
+| `data/claims-snapshot.db` | 25.1 MB | ~7.1 MB once, then **49-225 KB** a refresh | whole corpus; one writer |
+| `data/verdicts/mac.csv` | 1.27 MB | 267 KB | 3,784 rows; the Mac writes only this |
+| `data/verdicts/windows.csv` | 1.27 MB | 276 KB | 3,783 rows; Windows writes only this |
+
+Those git figures are measured with `git verify-pack`, not estimated, and there
+is a trap in reading them. Git packs the **newest** version of a blob whole and
+deltas the older ones backwards against it, so the current snapshot always looks
+enormous — 7.1 MB — while its five predecessors sit at 48.9, 96.3, 68.8, 225.2
+and 149.6 KB. The marginal cost of a refresh is the small number, not the big
+one. Measure an older revision if you want the honest figure.
 
 ### What the Windows machine should do
 
