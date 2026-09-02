@@ -81,10 +81,47 @@ hold the format.** A reasoning model spends tokens thinking before it emits any
 JSON. At 450 — the old value in `evaluate_claims.py` — qwen3 failed 2 of 3 pairs;
 at 1600 it failed 0 of 57 on the same prompt and the same model.
 
-### 2. Then take the Mac half of the pass — with `gpt-oss:20b`
+### 1a. Result — `gpt-oss:20b` lost, so the Mac half runs `qwen3:8b`
+
+Ran on the Mac, 57/57 rows, **0 unparseable** (so `MAX_TOKENS = 1600` was ample
+and the format contingency above never applied):
+
+| run | overall | complement |
+|---|---|---|
+| qwen3:8b / current *(target)* | 67% | **71%** |
+| mistral / current *(built the live map)* | 54% | 43% |
+| **gpt-oss:20b / current** | **46%** | **29%** |
+
+On the column that decides it, `gpt-oss:20b` scores **29% — below mistral, and
+below chance.** It answered `neutral` on 47 of 57 pairs. That is not a parse
+failure: it extracts a real finding and then reasons its way to "does not test
+it". It is a genuinely conservative model, and declining to commit scores zero
+on a stance benchmark.
+
+This **falsifies the premise of the split in step 2** — "the Mac can hold a 20B
+model, so half the corpus gets the better judge". The 20B is not the better
+judge. Running the Mac half on it would hand half the corpus to a model worse
+than the one that built the map we are replacing.
+
+**So the Mac half runs `qwen3:8b`** — same weights as the Windows
+`qwen3-8b-gpu`, differing only in the tag recorded in `evaluated_by`. Two
+consequences, both good:
+
+- It matches the sanity check already written into the merge section below,
+  which expects `evaluated_by = 'qwen3:8b'` on every Mac row.
+- **The cross-shard model effect disappears.** The worry in step 2 — that claim
+  A at +0.4 against claim B at +0.6 partly reflects which machine ran it — does
+  not arise when both halves share a judge. netSupport becomes comparable across
+  the whole map, not just within a claim.
+
+`shards/mac.txt` has had its `# model:` line updated to match, because
+`--coverage` reads it and would otherwise report the half as 0% done and raise a
+false "the shards overlapped" alarm.
+
+### 2. Then take the Mac half of the pass — with `qwen3:8b` (see 1a)
 
 ```sh
-python backend/evaluate_claims.py $(grep -v '^#' shards/mac.txt) --force --model gpt-oss:20b
+python backend/evaluate_claims.py $(grep -v '^#' shards/mac.txt) --force --model qwen3:8b
 ```
 
 `shards/mac.txt` and `shards/windows.txt` split the 78 claims into disjoint
@@ -93,9 +130,10 @@ from 10 papers to 139 and splitting by claim count would be badly skewed. They
 are committed rather than regenerated per machine so the two halves cannot drift
 apart.
 
-**The two halves are deliberately judged by different models**, and that is a
-decision, not an oversight: the Mac can hold a 20B model and this laptop cannot,
-so half the corpus gets the better judge rather than none of it.
+**Both halves are judged by the same model** (`qwen3:8b` on the Mac,
+`qwen3-8b-gpu` on Windows — identical weights, different tag). The original plan
+gave the Mac half to `gpt-oss:20b` on the theory that a 20B would judge better;
+the bake-off in 1a showed it judges worse, so that plan was dropped.
 
 The prompt and the objective are identical on both sides — same `STANCE_PROMPT`,
 same `tested_text()` wording, same validation. Only the model differs, and
@@ -114,8 +152,8 @@ Check the split landed as intended once it finishes:
 python backend/evaluate_claims.py --coverage
 ```
 
-**If `gpt-oss:20b` returns unparseable rows**, raise `MAX_TOKENS` before
-concluding it cannot hold the format — see step 1.
+`qwen3:8b` failed 0 of 57 rows at `MAX_TOKENS = 1600` in the 1a bake-off, so the
+format contingency in step 1 should not come up on this half.
 
 ### 3. Do NOT run `--all`, and do not share one database file
 
