@@ -601,6 +601,57 @@ Windows laptop has an **RTX 4050 with 6 GB of VRAM**, not 16. Measured there:
 
 ---
 
+### 23. The re-run may have swapped one distortion for its mirror image
+
+Observed 35% into the 2026-09-02 pass (qwen3:8b, `current` prompt, 1,353 pairs
+re-judged). Against the same pairs' mistral verdicts:
+
+| | mistral | qwen3 |
+|---|---|---|
+| supports | 681 | 389 |
+| refutes | **313** | **37** |
+| neutral | 325 | 908 |
+| mixed | 34 | 19 |
+
+Refutes fell 88%. Of 19 claims with five or more directional verdicts, **none**
+read as refuted and none as contested: 11 sit between +0.50 and +0.99, and 8
+have no refuting paper at all.
+
+The direction is what item 1 asked for — `honey_avoid_12m` moves from -0.01 to
++0.92 and `back_to_sleep` from +0.23 to +1.00, and those are settled facts the
+map was reading as contested. But item 1 predicted +0.20 for `back_to_sleep`,
+not +1.00, and **a map that cannot refute anything is as uninformative as one
+that contests everything.** It also cannot do the thing the reader most needs:
+say that a widely-believed claim is not supported.
+
+Three explanations, not yet separable:
+
+1. **It is correct.** These particular claims are well-supported and the old
+   contested reading was inversion error. The gold set is consistent with this:
+   qwen3 scored 75% on the `refutes` stratum, so it demonstrably can say refutes.
+2. **qwen3 is refutes-averse.** 37 refutes in 1,353 pairs is a strong prior. The
+   gold set holds only ~5 scoreable `refutes` rows — far too few to have caught
+   a systematic bias of this size, which is a gap in the gold set as much as a
+   question about the model.
+3. **Selection.** Rows are processed best-first by keyword score, so the
+   best-matched papers are judged first and may skew supportive. The contested
+   claims may simply not be done yet.
+
+**The cleanest test is already set up.** `bilingual_no_delay` and
+`crawling_not_required` were rewritten from negations into positive assertions
+specifically so the evidence could refute them. Both are in the Mac shard. If
+neither comes back refuted, explanation 1 is dead.
+
+**Do not export or ship until this is resolved.** `build_claims_data.py` has not
+been run, so nothing is live; keep it that way until the shards finish and those
+two claims are read.
+
+**Follow-on for the gold set:** it needs more genuinely-refuted rows. Five is not
+enough to detect a model that never says no, and that is exactly the failure this
+pass may have introduced.
+
+---
+
 ## Found while labelling the gold set (2026-08-29)
 
 These came out of hand-labelling and are not in the sections above. Both are
