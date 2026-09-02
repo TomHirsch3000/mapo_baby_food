@@ -146,6 +146,20 @@ PY
 If neither comes back refuted, "the claims really are all settled" is dead and
 the pass has overcorrected.
 
+**First data, from the Mac shard paused at 1,080/3,784 — and it points the other
+way.** `bilingual_no_delay` is 14/118 judged: **4 refutes, 3 mixed, 1 supports,
+6 neutral**. That is a 29% refutes rate on the claim written to be refutable,
+against 2.8% across the shard as a whole. An order of magnitude apart, on
+precisely the claim where the difference was predicted.
+
+A model that cannot say no does not say it ten times more often exactly where
+the evidence should make it. So refutes-aversion is no longer the leading
+explanation, and the `gpt-oss:20b` result — neutral on 47 of 57 — may say more
+about that particular model than about the task.
+
+Still early: 14 rows, and `crawling_not_required` has none yet. **The number to
+re-read when both shards finish is the shard-wide refutes rate, not this one.**
+
 ---
 
 ## Next session, in order
