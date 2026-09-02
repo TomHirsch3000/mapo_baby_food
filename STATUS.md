@@ -19,14 +19,43 @@ the pass ends, and leaves the machine on. Lid action was not readable on this
 machine so it could not be overridden — closing the lid still suspends and kills
 the run.
 
-The pass is resumable and commits per row. If it dies, re-running the same
-command picks up where it stopped without redoing finished rows (drop `--force`,
-or use `--stale`).
+The pass commits per row, so an interruption loses at most one pair.
+
+**Resuming is NOT `--stale`, and NOT dropping `--force`.** Both silently do
+almost nothing. The Mac hit this on its own half:
+
+- `--stale` selects on `direction IS NULL`, which is sound only while this
+  evaluator is the only thing that ever wrote that column. The Aug-26 mistral
+  pass already filled `direction` on most rows, so `--stale` reads them as
+  finished. **Measured on the Windows shard: it would run 1 pair, print its
+  normal completion line, and leave 2,402 rows still judged by the model this
+  pass exists to replace.** Nothing about that failure looks like a failure
+  afterwards, which is what makes it worth writing down.
+- Dropping `--force` skips rows that already carry a stance — and mistral gave
+  every row a stance, so it skips nearly all of them.
+
+The question actually being asked is *"which rows has this model not judged
+yet"*. So resume by clearing `direction` wherever `evaluated_by` is not the
+model being run, then using `--stale`. `backend/resume_mac_shard.sh` does that
+for the Mac. The Windows equivalent is the same two steps:
+
+1. `UPDATE claim_papers SET direction = NULL WHERE claim_key IN (<windows shard>)
+   AND evaluated_by IS NOT 'qwen3-8b-gpu'`
+2. `python backend/evaluate_claims.py $(grep -v '^#' shards/windows.txt) --stale --model qwen3-8b-gpu`
+
+Run step 1 against a **copy** of the DB first, as the Mac did. The check is
+cheap: the number of rows it queues should match what `--coverage` reports as
+outstanding for that shard, and no row outside the shard should be touched.
+
+Progress, any time:
 
 ```sh
-python backend/evaluate_claims.py $(grep -v '^#' shards/windows.txt) --force --model qwen3-8b-gpu
-python backend/evaluate_claims.py --coverage      # progress, per shard, any time
+python backend/evaluate_claims.py --coverage
 ```
+
+The honest fix is for `--stale` to select on `evaluated_by != model` rather than
+on `direction`. Deliberately not done while a pass is in flight — changing row
+selection underneath a running job buys nothing.
 
 **Nothing is live.** `build_claims_data.py` has not been run, so the site still
 serves the mistral map. Do not export until the open question below is settled.
