@@ -368,32 +368,37 @@ def report_coverage(conn):
     shards = {}
     for path in sorted(glob.glob(os.path.join(ROOT, "shards", "*.txt"))):
         lines = open(path, encoding="utf-8").read().rstrip("\n").split("\n")
-        model = next((l.split(":", 1)[1].strip() for l in lines
-                      if l.startswith("# model:")), None)
-        if model:
-            shards[os.path.basename(path)[:-4]] = (model, lines[-1].split())
+        # A shard may legitimately carry more than one model: a half started on
+        # one machine and finished on another is still one shard, and flagging
+        # that as an overlap would cry wolf on every row.
+        line = next((l.split(":", 1)[1] for l in lines
+                     if l.startswith("# model:")), None)
+        if line:
+            models = [m.strip() for m in line.split(",") if m.strip()]
+            shards[os.path.basename(path)[:-4]] = (models, lines[-1].split())
 
     for name, (want, keys) in shards.items():
         ph = ",".join("?" * len(keys))
+        mph = ",".join("?" * len(want))
         total = conn.execute(
             f"SELECT COUNT(*) FROM claim_papers WHERE claim_key IN ({ph})",
             keys).fetchone()[0]
         done = conn.execute(
-            f"SELECT COUNT(*) FROM claim_papers WHERE evaluated_by = ? "
-            f"AND claim_key IN ({ph})", [want] + keys).fetchone()[0]
-        # Anything in this shard carrying a model that is neither the shard's
-        # own nor the historical baseline means the other machine ran it too.
+            f"SELECT COUNT(*) FROM claim_papers WHERE evaluated_by IN ({mph}) "
+            f"AND claim_key IN ({ph})", want + keys).fetchone()[0]
+        # Anything carrying a model that is neither one of this shard's own nor
+        # the historical baseline means a machine ran a half it was not given.
         intruders = conn.execute(
             f"SELECT DISTINCT evaluated_by FROM claim_papers "
-            f"WHERE claim_key IN ({ph}) AND evaluated_by NOT IN (?, 'mistral') "
+            f"WHERE claim_key IN ({ph}) AND evaluated_by NOT IN ({mph}, 'mistral') "
             f"AND evaluated_by IS NOT NULL AND evaluated_by != ''",
-            keys + [want]).fetchall()
+            keys + want).fetchall()
         pct = 100 * done / total if total else 0
         print()
-        print(f"  shard {name:<10} {want:<16} {done:>5,}/{total:<5,} {pct:5.1f}%")
+        print(f"  shard {name:<10} {'+'.join(want):<26} {done:>5,}/{total:<5,} {pct:5.1f}%")
         if intruders:
-            print(f"    ** ALSO judged by {[i[0] for i in intruders]} — the shards "
-                  f"overlapped, re-run one half **")
+            print(f"    ** ALSO judged by {[i[0] for i in intruders]} — a machine "
+                  f"ran a shard it was not given **")
 
     # A verdict reached against wording the registry no longer holds is stale,
     # whoever produced it. Twelve claims were reworded on 2026-09-01 and two
