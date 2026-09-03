@@ -54,6 +54,25 @@ DEFAULT_WEIGHT = 1.0
 # helps nor hurts, and nothing pretends the old figure meant something.
 NEUTRAL_ALIGNMENT = 50
 
+# How many papers must take a DIRECTION before a claim can be positioned.
+#
+# `netSupport` is (supports - refutes) normalised, so one directional paper
+# produces +1.00 or -1.00 and `consensus` - which is |netSupport| - reports it as
+# maximally settled. Measured on 2026-09-03, five of the 78 claims rested on two
+# or fewer directional papers, and `swaddle_rolling_risk` exported -1.00 from a
+# single verdict on a paper about flax seed pillows and heart rate in premature
+# infants. Rendered beside a claim carrying 174 papers, that is not a weak
+# signal, it is a false one.
+#
+# The higher a model's neutral rate the worse this gets, because each claim's net
+# concentrates onto fewer papers. mistral left enough directional verdicts to
+# hide it; qwen3 does not.
+#
+# SPEC already has the right home for these: the shelf, for "a well-published
+# question nobody has assessed". A claim with one directional paper IS
+# unassessed, and belongs there rather than on the axis wearing a verdict.
+MIN_DIRECTIONAL = 3
+
 
 def paper_weight(study_type, citations, alignment):
     """Quality x impact x how well the paper answers THIS claim.
@@ -232,7 +251,11 @@ def summarise_claim(conn, claim_key, rows, openalex_count):
         "mixed": counts["mixed"],
         "unevaluated": counts["unevaluated"],
         "strengthMix": strength_mix,
-        "hasEvidence": len(rows) > 0,
+        # Not "did we collect anything" but "can this be positioned at all".
+        "hasEvidence": (counts["supports"] + counts["refutes"]
+                        + counts["mixed"]) >= MIN_DIRECTIONAL,
+        "papersCollected": len(rows),
+        "directionalCount": counts["supports"] + counts["refutes"] + counts["mixed"],
         # geometry
         "openAlexCount": openalex_count,                    # node SIZE
         "netSupport": round(net_support, 3),                # Y axis (balanced)
