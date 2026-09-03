@@ -17,6 +17,68 @@ const STANCE_LABELS = {
     neutral: 'Does not test this claim',
 };
 
+/**
+ * What official guidance tells a parent, beside what the evidence says.
+ *
+ * These are two different questions and the map has only ever answered one. A
+ * body can be confident where the literature is thin, and the gap between the
+ * two is worth seeing rather than resolving.
+ *
+ * Where the NHS and the AAP DISAGREE, both are shown and the disagreement is
+ * labelled. Seven claims are in that state - abstinence versus harm reduction
+ * on bed-sharing, 4-6 months versus around 6 on peanut - and picking a winner
+ * would throw away the most useful thing here: that confident official advice
+ * is not unanimous. A parent is told that nowhere else.
+ *
+ * Every paraphrase is backed by a quote that was re-fetched and proved present
+ * on the cited page. The URL is shown because a claim about what a body says
+ * should be checkable in one click.
+ */
+const Guidance = ({ node }) => {
+    const g = node.guidance;
+    if (!g || (!g.nhs && !g.aap)) return null;
+    const differ = g.agreement === 'differ';
+
+    const Body = ({ label, body }) => body ? (
+        <div style={{ margin: '4px 0 0' }}>
+            <a href={body.url} target="_blank" rel="noopener noreferrer"
+               style={{
+                   fontSize: '0.66rem', fontWeight: 700, letterSpacing: '0.06em',
+                   color: '#64748b', textDecoration: 'none', borderBottom: '1px dotted #cbd5e1',
+               }}>{label}</a>
+            <span style={{ fontSize: '0.84rem', color: '#475569', lineHeight: 1.45 }}>
+                {' '}{body.says}
+            </span>
+        </div>
+    ) : null;
+
+    return (
+        <div style={{
+            margin: '10px 0 4px', padding: '8px 12px',
+            background: differ ? '#fffbeb' : '#f8fafc',
+            border: `1px solid ${differ ? '#fde68a' : '#e2e8f0'}`,
+            borderLeft: `3px solid ${differ ? '#f59e0b' : '#94a3b8'}`,
+            borderRadius: '6px',
+        }}>
+            <span style={{
+                display: 'block', fontSize: '0.66rem', fontWeight: 700,
+                textTransform: 'uppercase', letterSpacing: '0.07em',
+                color: differ ? '#b45309' : '#94a3b8', marginBottom: '2px',
+            }}>
+                {differ ? 'official advice — the two bodies differ' : 'official advice'}
+            </span>
+            <Body label="NHS" body={g.nhs} />
+            <Body label="AAP" body={g.aap} />
+            {differ && g.note && (
+                <p style={{
+                    margin: '6px 0 0', fontSize: '0.78rem',
+                    color: '#92400e', lineHeight: 1.4,
+                }}>{g.note}</p>
+            )}
+        </div>
+    );
+};
+
 const TestedAs = ({ node }) => {
     // Only worth showing where the two wordings diverge - i.e. where the
     // headline is prescriptive and no study could test it verbatim. The reader
@@ -116,6 +178,7 @@ const NodeDetail = ({ node, kind }) => {
                                 {node.ageRange && <> • <span>{node.ageRange}</span></>}
                             </div>
                             <TestedAs node={node} />
+                            <Guidance node={node} />
                             {node.hasEvidence ? (
                                 <>
                                     <StatRow>

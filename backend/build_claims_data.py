@@ -242,6 +242,18 @@ def summarise_claim(conn, claim_key, rows, openalex_count):
         "topicName": topic["name"],
         "group": cfg["group"],
         "ageRange": cfg.get("age_range", ""),
+        # What the NHS and the AAP tell a parent, beside what the evidence says.
+        # Every quote behind these paraphrases was re-fetched and proved present
+        # on its page (backend/verify_guidance.py); the one that could not be
+        # verified was dropped rather than shown with a caveat.
+        #
+        # `agreement` is the interesting field. Seven claims have the two bodies
+        # saying different things - abstinence versus harm reduction on
+        # bed-sharing, 4-6 months versus around 6 on peanut - and where they
+        # differ BOTH are carried. Resolving the disagreement would throw away
+        # the most useful thing here: that confident official advice is not
+        # unanimous, which a parent is told nowhere else.
+        "guidance": cfg.get("guidance") or None,
         "query": cfg["query"],
         # what we hold
         "paperCount": len(rows),

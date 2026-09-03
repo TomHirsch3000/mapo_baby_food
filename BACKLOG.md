@@ -765,6 +765,133 @@ they scored 29% and 42%.
 
 ---
 
+### 25. NHS and AAP guidance is sourced but never reaches the reader
+
+67 of 78 claims carry guidance from both bodies in `gold/claim_audit.csv` -
+paraphrase, verbatim quote, URL, and whether the two agree. **118 of 119 quotes
+were re-fetched and proved present on the page** (`backend/verify_guidance.py`);
+the one that could not be verified was dropped rather than shown with a caveat.
+
+Neither `claims.py` nor `build_claims_data.py` knows it exists, so none of it is
+in the exported JSON and the footer panel has nothing to show. This is plumbing,
+not research: the content is finished.
+
+Seven claims have NHS and AAP **disagreeing**, which is the most valuable content
+here and the thing no other source gives a parent:
+
+| claim | the split |
+|---|---|
+| `peanut_intro_early` | AAP 4-6 months for high-risk babies; NHS around 6 months for all |
+| `bed_sharing_risk` | AAP abstinence; NHS harm-reduction |
+| `sleep_training_harm` | AAP "give them a chance to resettle"; NHS "respond to your baby's cries" |
+| `sugar_limit` | AAP none until 2; NHS none under 1, then 10g/day |
+| `salt_limit` | NHS none at all; AAP "moderate amounts... acceptable" |
+| `weaning_before_4m_risk` | NHS closes the 4-month door; AAP leaves it open |
+| `physical_activity_guideline` | NHS a 30-min floor; AAP a ramp to 15-30 min by ~7 weeks |
+
+**Wanted:** guidance fields on the registry, carried into `claims.json`, rendered
+in the footer panel when a claim is selected. Where the two bodies differ, show
+both rather than resolving it - the disagreement is the information.
+
+---
+
+### 26. The claim anchor sits outside its own papers, and the code says it should not
+
+Seen for the first time on the rebuilt map. `tummy_time_plagiocephaly` has
+`evidenceQuality` 0.75, placing the claim node right of nearly every paper it
+holds - which are cohort (0.50), cross-sectional (0.30), review (0.24) and a
+couple of randomised trials (0.88).
+
+`LayoutEngine.js` line 523 states *"A claim's evidenceQuality is the mean of its
+papers' designRank"*. **It is not.** `evidence_quality_of()` puts half its weight
+on the best quarter and a third on the best tenth, deliberately, so that two
+meta-analyses are not drowned by sixty surveys. The docstring explains the
+reasoning; the frontend comment contradicts it; the reader sees an anchor
+floating away from its evidence and has no way to know why.
+
+The same thing happens vertically. `blw_choking` carries `netSupport` -1.00, an
+extreme, while each refuting paper plots at its own less extreme position - so
+the claim sits below everything that supports its placement.
+
+This is item 12 restated with a case. Either the anchor moves to where its papers
+actually are, or the geometry says out loud that it is a top-weighted summary
+rather than a centroid. Silently averaging differently from what the axis implies
+is the one option to rule out.
+
+---
+
+### 27. Paper numbers rank the whole corpus, but the map draws a subset
+
+`rank` is computed per claim over every paper held and written into
+`evidence.json`; the frontend filters to the well-cited handful and never
+renumbers. So a claim showing 8 of 37 papers displays `#37` beside `#12` with
+nothing in between, and the numbers read as a broken sequence rather than a
+ranking over a larger set.
+
+Two honest fixes: renumber the visible set, or render `#12 of 37` so the gaps are
+obviously deliberate. The second keeps the information that a paper is 12th of
+37 rather than 3rd of 8, which is worth more.
+
+---
+
+### 28. Is a cohort really weaker than a trial, for THESE questions?
+
+`design.py` ranks prospective cohort 0.60 and cohort 0.50 against a randomised
+trial at 0.88. Conventional, and defensible in general.
+
+But **you cannot randomise infants to prone sleeping**, or to bed-sharing, or to
+not receiving vitamin K. For most of the safety claims on this map a large
+prospective cohort IS the best obtainable evidence, and ranking it two-thirds of
+the way down a ladder whose top rung is ethically unavailable penalises a claim
+for the nature of its own subject matter.
+
+The counter-argument is real: confounding does not go away because randomisation
+is impossible, and a cohort genuinely supports weaker inference.
+
+Related and still open: whether a meta-analysis belongs at 1.00 at all
+(discussed 2026-09-02). A synthesis adds no observations, cannot be told apart
+from a pooled analysis of cross-sectional surveys by the current rule, and
+double-counts when its constituent trials are in the same corpus.
+
+**Both change every claim's X position, so decide them together and once.**
+
+---
+
+### 29. Capture feedback on a (claim, paper) pair from inside the map
+
+Wanted: a button in the footer panel when a paper is selected - *"give feedback
+on the paper and claim"* - opening a free-text field, stored so it can be
+actioned later. The purpose is to make a human reading cheap to record, so that
+over time the human interpretation can supersede the model's where the two
+disagree.
+
+**This is the first thing the map needs to WRITE**, and SPEC 6 rules a backend
+out on the grounds that "a server would add cost, latency and failure modes to
+answer questions whose answers were already known at build time". A write is not
+that, so the argument does not apply - but the decision should be made
+explicitly rather than eroded.
+
+Three shapes:
+
+| | mechanism | cost |
+|---|---|---|
+| **local** | `localStorage`, keyed on claim_key + paperId, with a "download my feedback" button emitting CSV | none: no infra, no auth, no spam, works offline. Captures one person on one machine. |
+| **serverless** | a Vercel function writing to KV or a GitHub issue | an endpoint to secure, a store to pay for, spam to handle, and SPEC 6 stops being true |
+| **form service** | POST to Formspree or similar | free tier, no code, but the data arrives as prose in an inbox rather than as rows keyed to a paper |
+
+**Start local.** The value is not in the transport, it is in the feedback being
+STRUCTURED and keyed to a pair, so it merges into `gold_set.csv` and scores the
+next bake-off. A CSV in the repo does that; an inbox does not. The upgrade path
+is the same capture UI with a POST added when other people's feedback is
+actually the problem.
+
+**What it should record, so it merges rather than needing re-reading:** claim_key,
+paperId, the verdict shown at the time, the reader's verdict, free text, and the
+prompt_version and evaluated_by the row carried - without those, feedback cannot
+be attributed to the pass that produced the verdict it disagrees with.
+
+---
+
 ## Found while labelling the gold set (2026-08-29)
 
 These came out of hand-labelling and are not in the sections above. Both are
