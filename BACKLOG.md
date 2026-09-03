@@ -715,6 +715,56 @@ to re-read when it finishes, not this one.
 
 ---
 
+### 24. Extract-then-match: the premise survives, the matcher does not
+
+Tried 2026-09-03. The model reads a paper and is never shown a claim; the
+comparison happens afterwards in Python against the registry fields 1d filled
+in. The appeal is real and worth restating, because the null result below is
+about the implementation and not the idea:
+
+- extraction is a property of the PAPER, judgement of the PAIR. 6,672 papers
+  against 7,769 pairs today, and **zero inference for the next claim added** —
+  which is most of what makes item 19 hard.
+- the model cannot pattern-match to a claim it has not seen.
+- validation decomposes into small factual questions instead of one large
+  judgement.
+
+**Scored 5% (1/22), against 67% for the prompt in the tree.** Two distinct
+causes, neither fatal to the design:
+
+**1. Matching has to be semantic, and lexical matching cannot do it.** The
+extractions were largely reasonable; the matcher could not connect them to a
+claim:
+
+| claim says | paper says | matcher |
+|---|---|---|
+| ultra-processed food intake | degree of food processing (NOVA classification) | no match |
+| poorer diet quality | nutritional composition | no match |
+| room-sharing without bed-sharing | bed sharing | **matched — wrong**, they share "sharing" |
+
+The first two are the same thing in different words. The third is a false match
+that produced a wrong verdict. Word overlap is both too weak and too strong.
+
+**Two fixes keep everything the design was for.** Cosine similarity on
+embeddings (`nomic-embed-text` serves locally, no LLM call, handles synonymy);
+or a second tiny LLM call that sees only the extracted fields and the claim, no
+abstract — a fraction of the cost of reading a paper, and the expensive read
+still happens once per paper.
+
+**2. Nine fields with two verbatim quotes is too big an ask for an 8B model.**
+24 of 53 rows — **45%** — came back unparseable. That is not a matching problem
+and it caps the design wherever it runs on a small local model. Fewer fields, a
+split into two calls, or a larger model.
+
+**Also found:** both polarity attempts were missing a term. 1c names three —
+`effect`, `exposure_polarity`, `outcome_polarity` — and v1 and v2 modelled only
+the first two. "Formula feeding increased infections" against "breastfeeding
+leads to BETTER health outcomes" needs the outcome flip as well as the exposure
+flip, or two cancelling inversions read as a contradiction. May be part of why
+they scored 29% and 42%.
+
+---
+
 ## Found while labelling the gold set (2026-08-29)
 
 These came out of hand-labelling and are not in the sections above. Both are
