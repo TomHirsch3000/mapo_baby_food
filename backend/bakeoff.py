@@ -45,6 +45,7 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, SCRIPT_DIR)
 
 import console
+import extract
 import llm
 import polarity
 import prompts_v2
@@ -208,8 +209,35 @@ def _polarity(client, model, row):
     return dict(reported, stance=stance, resolved_by=reason), 1
 
 
+def _extract(client, model, row):
+    """Read the paper WITHOUT the claim, then match in Python.
+
+    Alone among the candidates, this one never shows the model a claim. The
+    extraction is a property of the paper, so it is computed once and reused for
+    every claim - including claims not written yet. In this harness that saving
+    is invisible, because the gold set is one row per pair; on the corpus it is
+    6,672 calls instead of 7,769, and zero for the next claim added.
+    """
+    cfg = CLAIMS.get(row["claim_key"]) or {}
+    if cfg.get("claim_sign") not in (1, -1):
+        return None, 0                      # threshold claim, nothing to resolve
+
+    raw = llm.call_llm(
+        client, model, extract.SYSTEM,
+        extract.PROMPT.format(title=(row["title"] or "")[:400],
+                              abstract=(row["abstract"] or "(no abstract)")[:1800]),
+        temperature=0.0, max_tokens=MAX_TOKENS)
+
+    got = extract.validate(llm.parse_json_response(raw))
+    stance, reason = extract.resolve(cfg, got)
+    if stance is None:
+        return None, 1
+    return dict(got, stance=stance, resolved_by=reason), 1
+
+
 PROMPTS = {
     "current": _one_call(SYSTEM_PROMPT, build_current, validate),
+    "extract": _extract,
     "decomposed": _decomposed,
     "polarity": _polarity,
     "polarity2": _polarity_v2,
