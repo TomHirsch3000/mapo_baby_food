@@ -91,20 +91,20 @@ measurement rather than by argument.
 
 ---
 
-### 2. `paper_weight` is called with the wrong argument
+### 2. `paper_weight` is called with the wrong argument — FIXED 2026-09-03
 
-[`build_claims_data.py:314`](backend/build_claims_data.py#L314) computes the
-exported per-paper `weight` as `paper_weight(row["evidence_strength"], ...)`,
-but the first parameter is `study_type`. Line 154 — the claim-level maths —
-passes it correctly.
+`build_claims_data.py` computed the exported per-paper `weight` as
+`paper_weight(row["evidence_strength"], ...)`, where the first parameter is
+`study_type`. The claim-level maths passed it correctly, so the number on a
+card and the number driving the claim's position were computed differently.
 
 `design.rank_of("strong"|"moderate"|"limited"|"mixed")` all fall through to the
-0.30 unclassified default, so **every paper's exported weight is computed as if
-its design were unknown**. The number already sitting on the card's data is not
-the number driving the claim's position.
+0.30 unclassified default, so **every card's weight was computed as if its
+design were unknown** — a meta-analysis and a case report scored identically.
 
-Small, independent of item 1, and every numeric feature below sits on it. Do it
-whenever there is a spare ten minutes.
+Fixed alongside [D26](DECISIONS.md#d26), which rewrote that function's third
+argument anyway. Found by grepping the call sites while changing the signature,
+which is the only reason it surfaced: nothing about it was visible in the output.
 
 ---
 
